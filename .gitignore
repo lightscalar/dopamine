@@ -1,0 +1,19 @@
+# For MACs:
+.DS_Store
+
+# VIM:
+*.swp
+*.swn
+*.swm
+*.swo
+*.swh
+*.swi
+*.swj
+*.swk
+*.swl
+*.sw*
+
+# Byte-compiled / optimized / DLL files:
+__pycache__/
+*.py[cod]
+*$py.class
