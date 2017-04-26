@@ -53,7 +53,7 @@ class LineWorld(object):
 
     @property
     def state(self):
-        return np.atleast_2d([self.x, self.vx, self.ax])
+        return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
         # return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
 
 
