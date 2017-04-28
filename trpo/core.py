@@ -3,6 +3,18 @@ import numpy as np
 from lineworld import *
 
 
+class Agent(object):
+    '''An agent has a brain (the policy) and can take actions.'''
+
+    def __init__(self, policy):
+        pass
+
+class StochasticPolicy(object):
+
+    def __init__()
+
+
+
 class TRPO(object):
     '''Trust Region Policy Optimizer.'''
 
@@ -36,14 +48,26 @@ class TRPO(object):
         # Determine relevant dimensions.
         D = self.env.D
         A = self.env.nb_actions
-        N = self.config['nb_neurons']
-        layer_shape = (D, N)
-        bias_shape = (D,1)
+        H = self.config['nb_neurons']
+        layer_1_shape = (D, H)
+        bias_1_shape = (D,1)
         xavier_init = 2/np.sqrt(D) 
 
         # Start very simple. Two layer RELU network, sigmoid output.
-        self.W = tf.Variable(tf.random_normal(layer_shape, stddev=xavier_init))
+        self.W1 = tf.Variable(tf.random_normal(layer_shape, stddev=xavier_init))
         self.b = tf.Variable(tf.random_normal(bias_shape, stddev=xavier_init))
+
+        # Declare placeholders for states, actions, and rewards.
+        self.s = tf.placeholder('float', [None, D])
+        self.a = tf.placeholder('float', [None, A])
+        self.r = tf.placeholder('float', [None, 1])
+
+        # Here is the policy!
+        self.policy = tf.matmul(W,x) + self.b
+
+
+    def predict(self, x):
+        pass
         
 
 if __name__ == '__main__':
