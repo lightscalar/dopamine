@@ -11,8 +11,8 @@ class SimpleNet(object):
         INPUTS
             layer_cfg - array-like
                 An array containing a collection of tuples,
-                    (n_in, n_out, _activation_fn)
-                which specify layer dimensions and activation functions.
+                    (n_out, _activation_fn)
+                which specify layer output dimension and activation function.
         '''
 
         # Initialize a tensorflow session.
