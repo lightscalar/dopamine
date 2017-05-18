@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
-from agent import Agent
-from lineworld import *
+from dopamine.agent import Agent
+from dopamine.lineworld import *
 from ipdb import set_trace as debug
 
 

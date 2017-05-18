@@ -4,9 +4,11 @@ from keras.utils.np_utils import to_categorical
 import pylab as plt
 import seaborn as sns
 from seaborn import xkcd_rgb as xkcd
+import tensorflow as tf
 
 
 def sample_data(points_per_class, dimension=2, number_classes=3):
+    '''Generate sample data points on a spiral.'''
     N = points_per_class # number of points per class
     D = dimension # dimensionality
     K = number_classes # number of classes
@@ -27,8 +29,18 @@ if __name__ =='__main__':
     X,y = sample_data(5000)
     y_ = to_categorical(y)
 
+
+    # Plot points to demonstrate the nonlinear decision boundaries.
     colors = np.argmax(y_,1)
     plt.ion()
     plt.figure()
-    plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap=plt.cm.Spectral)
+    plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap=plt.cm.Spectral) 
+
+    # Create a neural network to train.
+    x = tf.placeholder('float32', [None, 2])
+    output_dim = 3
+    layers = [(32, tf.nn.relu), (32, tf.nn.relu), (output_dim, None)]
+    net = SimpleNet(x, layers)
+
+    # Can we train this thing using TRPO? Maybe?
     

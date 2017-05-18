@@ -3,7 +3,12 @@ from ipdb import set_trace as debug
 
 
 class LineWorld(object):
-    
+    '''This provides a simulation environment for testing reinforcement 
+       learning algorithms. It provides a one-dimensional space with a one-
+       dimensional action space. Action is a Gaussian random variable
+       corresponding to the magnitude and direction of thrust.
+    '''
+
     def __init__(self):
         self.x = 10 * np.random.rand()
         self.vx = 0
@@ -43,16 +48,19 @@ class LineWorld(object):
 
     @property
     def nb_actions(self):
-        return 3 
+        '''Only a single scalar-valued action available here.'''
+        return 1
 
 
     @property
     def done(self):
+        '''Are we done with the current episode?'''
         return (self.t>self.max_time)
 
 
     @property
     def state(self):
+        '''The currently observed state of the system.'''
         return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
         # return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
 
