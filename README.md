@@ -1,4 +1,4 @@
-# Trust Region Policy Optimization
+# DOPAMINE: A Tensorflow Implementation of Trust Region Policy Optimization
 
 This is a Tensorflow-based implementation of [Trust Region Policy
 Optimization](https://arxiv.org/abs/1502.05477), a deep reinforcement learning
