@@ -45,33 +45,45 @@ class BinaryPolicy(StochasticPolicy):
         pass
 
 
-class GaussianPolicy(StochasticPolicy):
-    '''Multivariate Gaussian policy characterized by a mean vector and a vector
-       of log standard deviations.
+class ProbabilityType(object):
+    '''Base class for various probability densities/distributions.'''
+
+    def sampled_variable(self):
+        raise NotImplementedError
+
+    def prob_variable(self):
+        raise NotImplementedError
+
+    def likelihood(self, a, prob):
+        raise NotImplementedError
+
+    def loglikelihood(self, a, prob):
+        raise NotImplementedError
+
+    def kl(self, prob0, prob1):
+        '''The Kullback-Leibler divergence.'''
+        raise NotImplementedError
+
+    def entropy(self, prob):
+        raise NotImplementedError
+
+    def maxprob(self, prob):
+        raise NotImplementedError
+
+
+class DiagGaussian(ProbabilityType):
+    '''Multivariate Gaussian policy characterized by a mean vector and a
+       diagonal covariance matrix.
     '''
 
-    def __init__(self, action_vector):
+    def __init__(self, D):
         '''A Gaussian policy vector.
         INPUTS
-            action_vector - array_like
-                Array specifying the mean of the Gaussian process (first N 
-                elements), as well as the the log standard deviation of the
-                diagonal covariance matrix.
+            D - int
+                The dimension of the multivariate Gaussian density.
         '''
+        self.D = D
 
-        # Vector must consist of mean followed by log standard deviation.
-        assert np.mod(len(action_vector),2) == 0, \
-                'Action vector must be of even length'
-        n = int(len(action_vector)/2)
-        self.mu = action_vector[0:n]
-        log_std = action_vector[n:]
-        self.std = np.exp(log_std)
-        self.cov = np.diag(self.std)
-
-
-    def __call__(self,N=1):
-        '''Alias sample action for convenience.'''
-        return self.sample_action(N)
 
 
     def sample_action(self, N=1):
