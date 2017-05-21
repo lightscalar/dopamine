@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from dopamine.utils import *
 from ipdb import set_trace as debug
 
 
@@ -35,7 +36,7 @@ class SimpleNet(object):
             weight_name = 'w{:d}'.format(itr)
             bias_name = 'b{:d}'.format(itr)
 
-            # Randomly initialize the layer weights. 
+            # Randomly initialize the layer weights.
             self.weights[weight_name] = w = \
                     tf.Variable(tf.random_normal((n_in, n_out), \
                     stddev=np.sqrt(n_in)), name=weight_name)
@@ -61,13 +62,28 @@ class SimpleNet(object):
             n_in = int(n_out)
 
         # Final layer output is our network.
-        self.net_output = layer
-        self.vars = tf.trainable_variables
+        self.output = layer
+
+        # Keep track of the trainable parameters of this network.
+        self.vars = []
+        for _, matrix in self.weights.items():
+            self.vars.append(matrix)
+        for _, vector in self.biases.items():
+            self.vars.append(vector)
+
 
     def predict(self, x_, sess):
         '''Forward propagate the specified state, x_, through the network.'''
-        output = sess.run(self.net_output, feed_dict={self.x: x_})
+        output = sess.run(self.output, feed_dict={self.x: x_})
         return output
+
+
+    @property
+    def theta(self):
+        '''Return a flattened version of all network parameters.'''
+        theta = np.array([])
+
+
 
 
 if __name__ == '__main__':
@@ -80,6 +96,8 @@ if __name__ == '__main__':
     output_dim = 2
     layers = [(64, tf.nn.relu), (64, tf.nn.relu), (output_dim, tf.nn.softmax)]
     net = SimpleNet(x, layers)
+    layers = [(32, tf.nn.relu), (32, tf.nn.relu), (output_dim, tf.nn.softmax)]
+    net_2 = SimpleNet(x, layers)
 
     # Create some sample data.
     nb_samples = 126
@@ -88,11 +106,11 @@ if __name__ == '__main__':
     # Forward propagate this data through the network.
     init = tf.global_variables_initializer()
     with tf.Session() as sess:
-        pred = net.net_output
+        pred = net.output
         sess.run(init)
         out = sess.run(pred, feed_dict={x: x_})
         out_2 = net.predict(x_, sess)
-        all_vars = sess.run(net.vars())
+        all_vars = sess.run(net.vars)
 
     assert( out.shape == (nb_samples, output_dim) )
 

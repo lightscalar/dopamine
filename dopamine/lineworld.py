@@ -1,4 +1,5 @@
 import numpy as np
+from dopamine.stochastic_policy import *
 from ipdb import set_trace as debug
 
 
@@ -23,13 +24,9 @@ class LineWorld(object):
 
     def step(self, action):
         
-        # Change thrust direction (three possible actions).
-        if action == 0:
-            self.ax = self.ax_mag + 0.01*np.random.randn()
-        elif action == 1:
-            self.ax = -self.ax_mag + 0.01*np.random.randn()
-        elif action == 2:
-            self.ax = 0
+        # We have a one-dimensional continuous action space now. 
+        gauss = GaussianPolicy(action)
+        self.ax = gauss().flatten()[0] # grab the current acceleration.
 
         # Update position.
         self.t += self.dt
@@ -62,7 +59,7 @@ class LineWorld(object):
     def state(self):
         '''The currently observed state of the system.'''
         return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
-        # return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
+        # return np.atleast_2d([self.x, self.vx, self.ax, self.target_x]))
 
 
     @property
@@ -105,12 +102,11 @@ if __name__ == '__main__':
     x = []
     done = False
     while not done:
-        if np.random.rand() > 0.5 :
-            action = [1]
-        else:
-            action = [0]
 
-        # Update!
+        # Simple random gaussian policy.
+        action = [0, np.log(1.25)]
+
+        # Step the simulation.
         state, reward, done = env.step(action)
         x.append(state[0][0])
 

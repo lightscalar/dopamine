@@ -5,6 +5,7 @@ import pylab as plt
 import seaborn as sns
 from seaborn import xkcd_rgb as xkcd
 import tensorflow as tf
+from dopamine.basics import *
 
 
 def sample_data(points_per_class, dimension=2, number_classes=3):
@@ -26,7 +27,7 @@ def sample_data(points_per_class, dimension=2, number_classes=3):
 if __name__ =='__main__':
 
     # Create some testing data.
-    X,y = sample_data(5000)
+    X,y = sample_data(100)
     y_ = to_categorical(y)
 
 
@@ -34,13 +35,26 @@ if __name__ =='__main__':
     colors = np.argmax(y_,1)
     plt.ion()
     plt.figure()
-    plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap=plt.cm.Spectral) 
+    plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap=plt.cm.Spectral)
 
     # Create a neural network to train.
-    x = tf.placeholder('float32', [None, 2])
+    _x = tf.placeholder('float32', [None, 2])
+    _y = tf.placeholder('float32', [None, 3])
     output_dim = 3
     layers = [(32, tf.nn.relu), (32, tf.nn.relu), (output_dim, None)]
-    net = SimpleNet(x, layers)
+    net = SimpleNet(_x, layers)
+    squared_deltas = tf.reduce_sum(tf.square( tf.subtract(net.output, _y)),1)
+    loss = tf.reduce_mean(squared_deltas,0)
+    grads = tf.gradients(loss, net.vars)
+    theta = flatten_collection(net.vars)
+    flat_grad = flat_gradient(loss, net.vars)
 
-    # Can we train this thing using TRPO? Maybe?
-    
+    init = tf.global_variables_initializer()
+    with tf.Session() as sess:
+        sess.run(init)
+        fd = {_x:X, _y:y_}
+        print(sess.run(loss, feed_dict=fd))
+        out = sess.run(squared_deltas, feed_dict=fd)
+        g_out = sess.run(grads, feed_dict=fd)
+        theta = sess.run(theta)
+        fgrad = sess.run(flat_grad, feed_dict=fd)
