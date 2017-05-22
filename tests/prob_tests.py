@@ -17,9 +17,5 @@ def teardown():
 
 # BEGIN TESTS ------------------------------------------------------
 
-def create_gaussian_density_test(self):
-    gauss = DiagGaussian(5)
-    assert_equal(gauss.D, 5)
-
-
-def diag_loglikelihood
+def create_struct_test():
+    pass

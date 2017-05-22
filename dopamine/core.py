@@ -42,12 +42,12 @@ class TRPO(object):
 
         for _k in range(self.config['episodes_per_step']):
             pass
-            
+
 
     def learn(self):
         pass
 
-        
+
 
 
 if __name__ == '__main__':

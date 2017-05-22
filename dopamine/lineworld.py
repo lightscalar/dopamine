@@ -1,10 +1,10 @@
 import numpy as np
-from dopamine.stochastic_policy import *
+from dopamine.stochastics import *
 from ipdb import set_trace as debug
 
 
 class LineWorld(object):
-    '''This provides a simulation environment for testing reinforcement 
+    '''This provides a simulation environment for testing reinforcement
        learning algorithms. It provides a one-dimensional space with a one-
        dimensional action space. Action is a Gaussian random variable
        corresponding to the magnitude and direction of thrust.
@@ -23,15 +23,17 @@ class LineWorld(object):
 
 
     def step(self, action):
-        
-        # We have a one-dimensional continuous action space now. 
+
+        # We have a one-dimensional continuous action space now.
+        # The action vector is 2 dimensional; the first element is the
+        # mean output; the second is the standard deviation of that action
         gauss = GaussianPolicy(action)
         self.ax = gauss().flatten()[0] # grab the current acceleration.
 
         # Update position.
         self.t += self.dt
         self.x += self.vx * self.dt
-        self.vx += self.ax * self.dt 
+        self.vx += self.ax * self.dt
         self.reward = -self._distance_to_target
         self.total_steps += 1
 
@@ -115,6 +117,6 @@ if __name__ == '__main__':
     setup_plotting()
     import seaborn
     plot(x)
-        
+
 
 

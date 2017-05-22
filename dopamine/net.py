@@ -12,7 +12,7 @@ class SimpleNet(object):
         INPUTS
             layer_cfg - array-like
                 An array containing a collection of tuples,
-                    (n_out, _activation_fn)
+                    (n_out, activation_fn)
                 which specify layer output dimension and activation function.
         '''
 
@@ -94,9 +94,9 @@ if __name__ == '__main__':
     # Define our network.
     x = tf.placeholder('float32', [None, 5])
     output_dim = 2
-    layers = [(64, tf.nn.relu), (64, tf.nn.relu), (output_dim, tf.nn.softmax)]
+    layers = [(64, tf.nn.relu), (64, tf.nn.relu), (output_dim, None)]
     net = SimpleNet(x, layers)
-    layers = [(32, tf.nn.relu), (32, tf.nn.relu), (output_dim, tf.nn.softmax)]
+    layers = [(32, tf.nn.relu), (32, tf.nn.relu), (output_dim, None)]
     net_2 = SimpleNet(x, layers)
 
     # Create some sample data.
