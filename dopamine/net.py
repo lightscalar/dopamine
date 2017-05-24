@@ -16,12 +16,8 @@ class SimpleNet(object):
                 which specify layer output dimension and activation function.
         '''
 
-        # Initialize a tensorflow session.
-        self.sess = tf.Session()
-
         # Initialize the weights and biases of the network.
-        self.weights = {}
-        self.biases = {}
+        self.params = {}
         self.layers = {}
         self.x = x
 
@@ -37,12 +33,12 @@ class SimpleNet(object):
             bias_name = 'b{:d}'.format(itr)
 
             # Randomly initialize the layer weights.
-            self.weights[weight_name] = w = \
+            self.params[weight_name] = w = \
                     tf.Variable(tf.random_normal((n_in, n_out), \
                     stddev=np.sqrt(n_in)), name=weight_name)
 
             # Randomly initialize the layer biases.
-            self.biases[bias_name] = b = \
+            self.params[bias_name] = b = \
                     tf.Variable(tf.random_normal([n_out],\
                     stddev=np.sqrt(n_in)), name=bias_name)
 
@@ -64,25 +60,55 @@ class SimpleNet(object):
         # Final layer output is our network.
         self.output = layer
 
+        # Define our training data placeholder.
+        self.y = tf.placeholder(dtype, [None, layer.shape[1]])
+
         # Keep track of the trainable parameters of this network.
         self.vars = []
-        for _, matrix in self.weights.items():
-            self.vars.append(matrix)
-        for _, vector in self.biases.items():
-            self.vars.append(vector)
+        self.rmsprop = {} # the RMSProp cache.
+        for k, param in self.params.items():
+            self.vars.append(param)
+
+        # Compute the square loss.
+        self.square_loss =  tf.reduce_mean(tf.squared_difference(self.output,\
+                self.y))
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.1).minimize(self.square_loss)
 
 
-    def predict(self, x_, sess):
+    def fit(self, session, x, y, nb_itr=500, batch_size=1000, tol=1e-2):
+        '''Fit network to batch data (x,y) using stochastic gradient descent.'''
+        N = x.shape[0]
+        batch_size = np.min([batch_size, N])
+        cost = 1e4
+        for _ in range(2000):
+            samples = np.random.permutation(N)[:batch_size]
+            x_ = x[samples,:]
+            y_ = y[samples,:]
+            fd = {self.x: x_, self.y: y_}
+            _, cost = session.run([self.optimizer, self.square_loss],\
+                    feed_dict=fd)
+            print(cost)
+
+
+    def predict(self, sess, x_):
         '''Forward propagate the specified state, x_, through the network.'''
         output = sess.run(self.output, feed_dict={self.x: x_})
         return output
-
 
     @property
     def theta(self):
         '''Return a flattened version of all network parameters.'''
         theta = np.array([])
 
+    @property
+    def param_dim(self):
+        '''Return the total dimension of the parameter space.'''
+        dim = 0
+        for _, w in self.weights.items():
+            dim += numel(w)
+        for _, b in self.biases.items():
+            dim += numel(b)
+        return dim
 
 
 
@@ -115,6 +141,6 @@ if __name__ == '__main__':
     assert( out.shape == (nb_samples, output_dim) )
 
     # If we're talking about softmax output.
-    assert (np.sum(out, 1).mean() == 1)
+    # assert (np.sum(out, 1).mean() == 1)
 
 

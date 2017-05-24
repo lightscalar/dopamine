@@ -53,6 +53,7 @@ if __name__ =='__main__':
     with tf.Session() as sess:
         sess.run(init)
         fd = {_x:X, _y:y_}
+        vals = sess.run(net.output, feed_dict=fd)
         print(sess.run(loss, feed_dict=fd))
         out = sess.run(squared_deltas, feed_dict=fd)
         g_out = sess.run(grads, feed_dict=fd)
