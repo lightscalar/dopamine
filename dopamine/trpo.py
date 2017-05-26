@@ -37,6 +37,7 @@ class TRPOAgent(object):
         cfg.setdefault('episodes_per_step', 2)
         cfg.setdefault('gamma', 0.99)
         cfg.setdefault('lambda', 0.96)
+        cfg.setdefault('cg_damping', 0.1)
         self.cfg = cfg
 
         # And here is the policy that we're trying to optimize.
@@ -47,25 +48,31 @@ class TRPOAgent(object):
 
         # Action vector is the [mean, std] of the Gaussian action density.
         self.state_vectors = state_vectors = policy.inputs
-        self.action_vector = action_vector = policy.outputs
-        action_vector_old = self.pdf.parameter_vector
-        self.action_taken = self.pdf.sample(action_vector)
+        self.action_vectors = action_vectors = policy.outputs
+        self.action_vectors_old = action_vectors_old = \
+                self.pdf.parameter_vector
+        self.actions_taken = actions_taken = self.pdf.sample(action_vectors)
+        self.advantages = advantages = tf.placeholder(dtype, [None])
 
-        # The action_taken placeholder holds the actual actions sampled from
-        # the policy. It takes its shape from the probability density.
-        action_taken = pdf.sampled_var
+        # Compute the surrogate loss function.
+        logp = self.pdf.loglikelihood(actions_taken, action_vectors)
+        logp_old = self.pdf.loglikelihood(actions_taken, action_vectors_old)
+        log_ratio = logp/logp_old
+        self.loss = loss = -tf.reduce_mean( log_ratio * self.advantages )
+        self.policy_gradient = flat_gradient(self.loss, network_params)
 
         # The number of observations.
         N = state_vectors.shape[0]
 
         # Compute expected KL divergence (but exclude first argument from
         # gradient computations).
-        action_vector_fixed = tf.stop_gradient(action_vector)
-        kl_first_fixed = pdf.kl(action_vector_fixed, action_vector)
-        expected_kl = tf.reduce_mean(kl_first_fixed)
+        action_vectors_fixed = tf.stop_gradient(action_vectors)
+        kl_first_fixed = pdf.kl(action_vectors_fixed, action_vectors)
+        self.expected_kl = expected_kl = tf.reduce_mean(kl_first_fixed)
 
         # Now we compute the gradients of the expected KL divergence.
-        grads = tf.gradients(expected_kl, network_params)
+        self.grads = grads = tf.gradients(expected_kl, network_params,\
+                name='gradients')
 
         # Placeholder for tangent vector in the network's parameter space.
         self.flat_tangent = tf.placeholder(dtype, [None])
@@ -100,7 +107,7 @@ class TRPOAgent(object):
     def compute_deltas(self, path):
         '''Computes the deltas given observed states, rewards, and current
         value function.'''
-        states = path['states']
+        states = path['state_vectors']
         rewards = path['rewards']
         # Estimate the state values using the neural network.
         values = self.session.run(self.vf, feed_dict={self.states: states})
@@ -132,13 +139,11 @@ class TRPOAgent(object):
             # Initialize the current state of the system.
             state = self.env.reset()
             done = False
-            k=0
 
             while (not done): # keep simulating until episode terminates.
 
                 # Estimate the action based on current policy!
                 action_vector, action = self.act(state)
-
                 action_vector = action_vector.tolist()
                 action = action.tolist()
 
@@ -150,10 +155,9 @@ class TRPOAgent(object):
                 actions.append(action[0])
                 action_vectors.append(action_vector[0])
                 rewards.append(reward)
-                k+=1
 
             # Assemble all useful path information.
-            path = {'states': np.vstack(states),
+            path = {'state_vectors': np.vstack(states),
                     'rewards': np.vstack(rewards),
                     'action_vectors': np.vstack(action_vectors),
                     'actions': np.vstack(actions)}
@@ -162,31 +166,46 @@ class TRPOAgent(object):
 
     def act(self, state):
         '''Take an action, given an observed state.'''
-        return self.session.run([self.action_vector, self.action_taken], \
+        return self.session.run([self.action_vectors, self.actions_taken], \
                 feed_dict={self.state_vectors: state})
+
 
     def learn(self):
         '''Learn to control an agent in an environment.'''
 
         for _ in range(1):
 
-            # 1. Simulate paths using current policy.
+            # 1. Simulate paths using current policy --------------------------
             paths = self.simulate()
 
-            # 2. Generalized Advantage Estimation.
+            # 2. Generalized Advantage Estimation -----------------------------
             for path in paths:
                 path = self.compute_advantages(path)
 
-            # 2b. Assemble necessary data.
-            states = np.concatenate([path['states'] for path in paths])
+            # 2b. Assemble necessary data -------------------------------------
+            state_vectors = np.concatenate([path['state_vectors'] for \
+                    path in paths])
             advantages = np.concatenate([path['advantages'] for path in paths])
-            actions = np.concatenate([path['actions'] for path in paths])
+            actions_taken = np.concatenate([path['actions'] for path in paths])
             action_vectors = np.concatenate([path['action_vectors'] for \
                     path in paths])
 
-            # 3. TRPO update of policy.
+            # 3. TRPO update of policy ----------------------------------------
+ 
+            # Normalize the advantages.
             advantages -= advantages.mean()
             advantages /= (advantages.std() + 1e-8)
+
+            # Load up results for update.
+            feed = {self.action_vectors_old: action_vectors,
+                    self.actions_taken: actions_taken,
+                    self.state_vectors: state_vectors,
+                    self.advantages: advantages.flatten(),
+                    self.action_vectors_old: action_vectors}
+
+            def fisher_vector_product(p):
+                feed[self.flat_tangent] = p
+                return self.session.run(self.fvp, feed) + cfg['cg_damping'] * p
 
         return advantages
 
@@ -211,24 +230,6 @@ if __name__ == '__main__':
     agent = TRPOAgent(env, policy, pdf)
     paths = agent.learn()
 
-    # policy = StochasticPolicy(net, DiagGaussian(nb_actions))
-    # tr = TRPO(env, policy)
-
-    # Test our actions.
-    # dg = DiagGaussian(1)
-    # action_vector = policy.outputs
-    # action_taken = dg.sample(action_vector)
-
-    # with tf.Session() as sess:
-
-    #     # Run this guy.
-    #     init = tf.global_variables_initializer()
-    #     sess.run(init)
-
-    #     for k in range(1000):
-    #         # print(sess.run(action_vector, feed_dict={state: env.reset()}))
-    #         fd={state_vector: env.reset()}
-    #         print(action_taken.eval(session=sess, feed_dict=fd))
 
 
 

@@ -61,7 +61,7 @@ class DiagGaussian(PDF):
         return tf.placeholder(dtype, [None, 2*self.D])
 
     @property
-    def sampled_var(self):
+    def sampled_variable(self):
         '''Returns placeholder for sampled variable.'''
         return tf.placeholder(dtype, [None, self.D])
 

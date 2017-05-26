@@ -119,3 +119,34 @@ def make_tangents(tangent, params):
         tangents.append(param)
         start += size
     return tangents
+
+
+def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
+    '''Performs conjugate gradient descent.
+    ARGS
+        f_Ax - function
+            Function returning the matrix/vector product of interest -- the
+            Ax in the equation Ax=b that we're trying to solve.
+        b - array_like
+            The right hand side of the Ax=b equation.
+        cg_iters - int [default: 10]
+            The number of iterations that we allow.
+        tol - float [default: 1e-10]
+            The residual tolerance. If we drop below this, stop iterating.
+    '''
+    p = b.copy()
+    r = b.copy()
+    x = np.zeros_like(b)
+    rdotr = r.dot(r)
+    for i in range(cg_iters):
+        z = f_Ax(p)
+        v = rdotr / p.dot(z)
+        x += v * p
+        r -= v * z
+        newrdotr = r.dot(r)
+        mu = newrdotr / rdotr
+        p = r + mu * p
+        rdotr = newrdotr
+        if rdotr < tol:
+            break
+    return x
