@@ -4,6 +4,16 @@ import numpy as np
 dtype='float32'
 
 
+def discounted_sum(r, discount_factor):
+    '''Computed discounted reward sum.'''
+    discounted_r = np.zeros_like(r)
+    running_add = 0
+    for t in reversed(range(0, r.size)): # start at the end, work backwards.
+        running_add = running_add * discount_factor + r[t]
+        discounted_r[t] = running_add
+    return discounted_r
+
+
 def flatten(tensor):
     '''Flattens a tensor into a one dimensional object.'''
     shape = tensor.shape

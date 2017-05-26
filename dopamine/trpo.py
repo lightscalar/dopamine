@@ -47,7 +47,7 @@ class TRPOAgent(object):
 
         # Action vector is the [mean, std] of the Gaussian action density.
         self.state_vectors = state_vectors = policy.inputs
-        action_vector = policy.outputs
+        self.action_vector = action_vector = policy.outputs
         action_vector_old = self.pdf.parameter_vector
         self.action_taken = self.pdf.sample(action_vector)
 
@@ -102,29 +102,45 @@ class TRPOAgent(object):
         value function.'''
         states = path['states']
         rewards = path['rewards']
-        values = self.session.run(self.vf, feed_dict={self.states: states)
-        return values
+        # Estimate the state values using the neural network.
+        values = self.session.run(self.vf, feed_dict={self.states: states})
+        # Now compute the delta.
+        delta_t = np.zeros_like(values)
+        delta_t[:-1] = -values[:-1] + rewards[:-1] + self.cfg['gamma'] *\
+                values[1:]
+        delta_t[-1] = rewards[-1] # Last element value is just its reward
+        return delta_t
+
+    def compute_advantages(self, path):
+        '''Computes advantages, give delta estimates.'''
+        deltas = self.compute_deltas(path)
+        gl = (self.cfg['gamma'] * self.cfg['lambda'])
+        path['advantages'] = discounted_sum(deltas, gl)
+        return path
 
     def simulate(self):
         '''Simulate the environment with respect to the given policy.'''
 
         # Initialize these things!
-        states, actions, rewards, paths = [], [], [], []
+        paths = []
 
         for itr in range(self.cfg['episodes_per_step']):
 
             print('Simulating episode {:d}'.format(itr))
+            states, actions, action_vectors, rewards = [], [], [], []
 
             # Initialize the current state of the system.
             state = self.env.reset()
             done = False
             k=0
 
-            while (not done):
+            while (not done): # keep simulating until episode terminates.
 
-                print(k)
                 # Estimate the action based on current policy!
-                action = self.act(state).tolist()
+                action_vector, action = self.act(state)
+
+                action_vector = action_vector.tolist()
+                action = action.tolist()
 
                 # Now take a step!
                 state, reward, done = self.env.step(action)
@@ -132,23 +148,21 @@ class TRPOAgent(object):
                 # Store these things for later.
                 states.append(state)
                 actions.append(action[0])
+                action_vectors.append(action_vector[0])
                 rewards.append(reward)
                 k+=1
 
-            print('And we are done!')
-
-            # Assemble the full path information.
+            # Assemble all useful path information.
             path = {'states': np.vstack(states),
                     'rewards': np.vstack(rewards),
+                    'action_vectors': np.vstack(action_vectors),
                     'actions': np.vstack(actions)}
-
             paths.append(path)
-
         return paths
 
     def act(self, state):
         '''Take an action, given an observed state.'''
-        return self.action_taken.eval(session=self.session,\
+        return self.session.run([self.action_vector, self.action_taken], \
                 feed_dict={self.state_vectors: state})
 
     def learn(self):
@@ -160,8 +174,21 @@ class TRPOAgent(object):
             paths = self.simulate()
 
             # 2. Generalized Advantage Estimation.
+            for path in paths:
+                path = self.compute_advantages(path)
 
-        return paths
+            # 2b. Assemble necessary data.
+            states = np.concatenate([path['states'] for path in paths])
+            advantages = np.concatenate([path['advantages'] for path in paths])
+            actions = np.concatenate([path['actions'] for path in paths])
+            action_vectors = np.concatenate([path['action_vectors'] for \
+                    path in paths])
+
+            # 3. TRPO update of policy.
+            advantages -= advantages.mean()
+            advantages /= (advantages.std() + 1e-8)
+
+        return advantages
 
 
 

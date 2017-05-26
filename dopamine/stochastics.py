@@ -8,49 +8,6 @@ from ipdb import set_trace as debug
 dtype = tf.float32
 
 
-# class StochasticPolicy(object):
-#     '''Base class for stochastic policies.'''
-
-#     def __init__(self, network, probability_type):
-#         '''Configure the policy.'''
-#         self.net = network
-#         self.prob = probability_type
-#         self.vars = self.net.vars
-
-#     @property
-#     def input(self):
-#         '''Return placeholder for the input to the network.'''
-#         return self.net.x
-
-#     @property
-#     def output(self):
-#         '''Return the output of the neural network.'''
-#         return self.net.output
-
-#     def predict(self, session, state):
-#         '''Predicts action distribution give state.'''
-#         return self.net(session, state)
-
-#     def act(self, session, state):
-#         '''Predicts an action vector, samples an action, and returns it!'''
-#         action_parameter = self.net(session, state)
-#         return session.run(self.prob.sample(action_parameter))
-
-#     @property
-#     def theta(self):
-#         '''Returns flattened version of the trainable variables.'''
-#         pass
-
-#     @property
-#     def params(self):
-#         return self.net.vars
-
-#     @property
-#     def action_space(self):
-#         '''Returns an action space object.'''
-#         raise NotImplementedError
-
-
 class PDF(object):
     '''Base class for various probability densities/distributions.'''
 
@@ -116,8 +73,10 @@ class DiagGaussian(PDF):
         '''
         mu = parameter_vector[:, :self.D]
         std = parameter_vector[:, self.D:]
-        return - 0.5 * tf.reduce_sum(tf.square( (x-mu)/std ),1) - \
-                 0.5 * tf.log(2*np.pi)*self.D - tf.reduce_sum(tf.log(std), 1)
+
+        return -0.5 * tf.reduce_sum(tf.square( (x-mu)/std ), axis=1)\
+                -0.5 * tf.log(2*np.pi) * self.D\
+                -tf.reduce_sum(tf.log(std), axis=1)
 
     def likelihood(self, x, parameter_vector):
         '''Likelihood of observation given parameter vector.'''
@@ -156,19 +115,34 @@ class DiagGaussian(PDF):
         return param_vector[:, :self.D]
 
 
-def kln(a,b):
+def kl_numpy(a,b):
     '''Numpy implementation of KL for sanity check.'''
     a = np.array(a)
     b = np.array(b)
     d = int(a.shape[1]/2)
-    ma = a[:,:d]
-    sa = a[:,d:]
-    mb = b[:,:d]
-    sb = b[:,d:]
+    mu_a = a[:,:d]
+    std_a = a[:,d:]
+    mu_b = b[:,:d]
+    std_b = b[:,d:]
+    std_a2 = np.square(std_a)
+    mean_diff2 = np.square(mu_a - mu_b)
+    denom = 2 * np.square(std_b)
+    term_1 = np.sum(np.log(std_b/std_a), axis=1)
+    term_2 = np.sum( np.divide(std_a2 + mean_diff2, denom), axis=1)
+    term_3 = -0.5 * d
+    return term_1 + term_2 + term_3
 
-    kl = (np.log(sb/sa)).sum(1) + ((sa**2 + (ma - mb)**2 )/\
-            (2*sb**2)).sum(1) - 0.5 * d
-    return kl
+
+def loglike_np(x, a):
+    '''Numpy implementation of KL for sanity check.'''
+    a = np.array(a)
+    d = int(a.shape[1]/2)
+    mu = a[:,:d]
+    std = a[:,d:]
+    term1 = -0.5 * ((x - mu)**2/std**2).sum(axis=1)
+    term2 = -0.5 * np.log(2*np.pi) * d
+    term3 = -np.log(std).sum(axis=1)
+    return term1 + term2 + term3
 
 
 if __name__=='__main__':
@@ -178,22 +152,27 @@ if __name__=='__main__':
     dtype = 'float32'
 
     # Sample from this density!
-    _x = tf.placeholder(dtype, [None, 1])
-    _param = tf.placeholder(dtype, [None, 2])
-    _param2 = tf.placeholder(dtype, [None, 2])
+    obs = tf.placeholder(dtype, [None, 1])
+    vector = tf.placeholder(dtype, [None, 2])
+    vector_b = tf.placeholder(dtype, [None, 2])
 
     x = [[1], [1]]
     param = [[15,0.2], [1.0, 0.6]]
     param2 = [[11, 0.05,], [2.4, 0.4]]
 
-    with tf.Session() as sess:
-        _loglik = gauss.likelihood(_x, _param)
-        _dS = gauss.differential_entropy(_param)
-        _samples = gauss.sample(_param)
-        _kl = gauss.kl(_param, _param2)
-        loglik = sess.run(_loglik, feed_dict={_x: x, _param: param})
-        dS = sess.run(_dS, feed_dict={_param: param})
-        samples = sess.run(_samples, feed_dict={_param: param})
-        kl = sess.run(_kl, feed_dict={_param: param, _param2: param2})
-        out = sess.run(tf.square(_param), feed_dict={_param:param})
+    l1 = gauss.loglikelihood(obs, vector)
+    kl = gauss.kl(vector, vector_b)
 
+    with tf.Session() as sess:
+        ll_tf = sess.run(l1, feed_dict={obs: x, vector: param})
+        ll_np = loglike_np(x, param)
+        kl_tf = sess.run(kl, feed_dict={vector: param, vector_b: param2})
+        kl_np = kl_numpy(param, param2)
+
+
+    # These should be more or less the same.
+    print(ll_tf)
+    print(ll_np)
+
+    print(kl_tf)
+    print(kl_np)
