@@ -35,7 +35,7 @@ def flatten_collection(var_list):
 
 
 def flat_gradient(loss, var_list):
-    '''Returns flattened version of gradient of loss w.r.t. specified 
+    '''Returns flattened version of gradient of loss w.r.t. specified
        parameters.
     '''
     grads = tf.gradients(loss, var_list)
