@@ -207,8 +207,6 @@ class TRPOAgent(object):
                 feed[self.flat_tangent] = p
                 return self.session.run(self.fvp, feed) + cfg['cg_damping'] * p
 
-
-
         return advantages
 
 
