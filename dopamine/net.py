@@ -7,7 +7,7 @@ from ipdb import set_trace as debug
 class SimpleNet(object):
     '''Simple multilayer perceptron.'''
 
-    def __init__(self, x, layers_config):
+    def __init__(self, inputs, layers_config):
         '''Create a multilayer perceptron.
         INPUTS
             layer_cfg - array-like
@@ -17,13 +17,13 @@ class SimpleNet(object):
         '''
 
         # Initialize the weights and biases of the network.
-        self.params = {}
+        self.params_dict = {}
         self.layers = {}
-        self.x = x
+        self.inputs = inputs
+        _inputs = inputs
 
         # Input data dictates the size of the input layer.
-        n_in = int(x.shape[1])
-        _input = x
+        n_in = int(inputs.shape[1])
 
         for itr, layer in enumerate(layers_config):
 
@@ -33,18 +33,18 @@ class SimpleNet(object):
             bias_name = 'b{:d}'.format(itr)
 
             # Randomly initialize the layer weights.
-            self.params[weight_name] = w = \
+            self.params_dict[weight_name] = w = \
                     tf.Variable(tf.random_normal((n_in, n_out), \
                     stddev=np.sqrt(n_in)), name=weight_name)
 
             # Randomly initialize the layer biases.
-            self.params[bias_name] = b = \
+            self.params_dict[bias_name] = b = \
                     tf.Variable(tf.random_normal([n_out],\
                     stddev=np.sqrt(n_in)), name=bias_name)
 
             # Create layers via matrix multiplication!
             self.layers['layer_{:d}'.format(itr)] = layer = \
-                    tf.add(tf.matmul(_input, w), b)
+                    tf.add(tf.matmul(_inputs, w), b)
 
             # If activation function exists, use it; otherwise it's linear.
             if activation:
@@ -54,25 +54,27 @@ class SimpleNet(object):
                 pass
 
             # Output of this layer becomes the input of the next.
-            _input = layer
+            _inputs = layer
             n_in = int(n_out)
 
         # Final layer output is our network.
-        self.output = layer
+        self.outputs = layer
 
-        # Define our training data placeholder.
-        self.y = tf.placeholder(dtype, [None, layer.shape[1]])
+        # Define our target data placeholder.
+        self.targets = tf.placeholder(dtype, [None, layer.shape[1]])
 
         # Keep track of the trainable parameters of this network.
-        self.vars = []
-        self.rmsprop = {} # the RMSProp cache.
-        for k, param in self.params.items():
-            self.vars.append(param)
+        self.params = []
+        for k, param in self.params_dict.items():
+            self.params.append(param)
 
         # Compute the square loss.
-        self.square_loss =  tf.reduce_mean(tf.squared_difference(self.output,\
-                self.y))
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.1).minimize(self.square_loss)
+        self.square_loss =  tf.reduce_mean(tf.squared_difference(self.outputs,\
+                self.targets))
+
+        # Create the optimizer (for use in value function fitting, etc.)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.1).\
+                minimize(self.square_loss)
 
 
     def fit(self, session, x, y, nb_itr=500, batch_size=1000, tol=1e-2):
@@ -89,11 +91,13 @@ class SimpleNet(object):
                     feed_dict=fd)
             print(cost)
 
-
     def predict(self, sess, x_):
         '''Forward propagate the specified state, x_, through the network.'''
-        output = sess.run(self.output, feed_dict={self.x: x_})
-        return output
+        return sess.run(self.output, feed_dict={self.x: x_})
+
+    def __call__(self, sess, x_):
+        '''Alias for the predict method.'''
+        return self.predict(sess, x_)
 
     @property
     def theta(self):

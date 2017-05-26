@@ -21,14 +21,14 @@ class LineWorld(object):
         self.target_x = 5
         self.total_steps = 0
 
-
     def step(self, action):
 
         # We have a one-dimensional continuous action space now.
-        # The action vector is 2 dimensional; the first element is the
-        # mean output; the second is the standard deviation of that action
-        gauss = GaussianPolicy(action)
-        self.ax = gauss().flatten()[0] # grab the current acceleration.
+        # The action here is simply the acceleration at this instant.
+        self.ax = action[0][0]
+        if np.abs(self.ax)>10:
+            # We limit the maximum acceleration that can be requested.
+            self.ax = np.sign(self.ax) * 10
 
         # Update position.
         self.t += self.dt
@@ -39,46 +39,38 @@ class LineWorld(object):
 
         return self.state, self.reward, self.done
 
-
     @property
     def _distance_to_target(self):
         return np.sqrt((self.x - self.target_x)**2)
-
 
     @property
     def nb_actions(self):
         '''Only a single scalar-valued action available here.'''
         return 1
 
-
     @property
     def done(self):
         '''Are we done with the current episode?'''
         return (self.t>self.max_time)
 
-
     @property
     def state(self):
         '''The currently observed state of the system.'''
         return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
-        # return np.atleast_2d([self.x, self.vx, self.ax, self.target_x]))
-
 
     @property
     def D(self):
         '''Returns dimension of the state space.'''
         return self.state.shape[1]
 
-
     @property
     def steps_per_episode(self):
         return int(self.max_time/self.dt)
 
-
     def reset(self):
-        self.x, self.vx, self.t = 10 * np.random.rand(), 0, 0
+        '''Reset state vector, time, velocity, etc.'''
+        self.x, self.vx, self.t = 10*np.random.rand(), 2*np.random.randn(), 0
         return self.state
-
 
     def simulate(self, agent):
         '''Simulate the environment using the provided agent to control all the

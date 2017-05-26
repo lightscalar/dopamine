@@ -3,53 +3,55 @@ import numpy as np
 import tensorflow as tf
 from ipdb import set_trace as debug
 
+
 # Specify the data type we're using.
 dtype = tf.float32
 
 
-class StochasticPolicy(object):
-    '''Base class for stochastic policies.'''
+# class StochasticPolicy(object):
+#     '''Base class for stochastic policies.'''
 
-    def __init__(self, network, probability_type):
-        '''Configure the policy.'''
-        self.net = network
-        self.prob = probability_type
-        self.vars = self.net.vars
+#     def __init__(self, network, probability_type):
+#         '''Configure the policy.'''
+#         self.net = network
+#         self.prob = probability_type
+#         self.vars = self.net.vars
 
-    @property
-    def input(self):
-        '''Return placeholder for the input to the network.'''
-        return self.net.x
+#     @property
+#     def input(self):
+#         '''Return placeholder for the input to the network.'''
+#         return self.net.x
 
-    @property
-    def output(self):
-        '''Return the output of the neural network.'''
-        return self.net.output
+#     @property
+#     def output(self):
+#         '''Return the output of the neural network.'''
+#         return self.net.output
 
-    def predict(self, state):
-        '''Predicts action distribution give state.'''
-        return self.network(state)
+#     def predict(self, session, state):
+#         '''Predicts action distribution give state.'''
+#         return self.net(session, state)
 
-    def act(self, state):
-        '''Predicts an action vector and takes an action.'''
-        pass
+#     def act(self, session, state):
+#         '''Predicts an action vector, samples an action, and returns it!'''
+#         action_parameter = self.net(session, state)
+#         return session.run(self.prob.sample(action_parameter))
 
-    @property
-    def theta(self):
-        '''Returns flattened version of the trainable variables.'''
-        pass
+#     @property
+#     def theta(self):
+#         '''Returns flattened version of the trainable variables.'''
+#         pass
 
-    @property
-    def params(self):
-        return self.net.vars
+#     @property
+#     def params(self):
+#         return self.net.vars
 
-    @property
-    def action_space(self):
-        '''Returns an action space object.'''
-        raise NotImplementedError
+#     @property
+#     def action_space(self):
+#         '''Returns an action space object.'''
+#         raise NotImplementedError
 
 
-class ProbabilityType(object):
+class PDF(object):
     '''Base class for various probability densities/distributions.'''
 
     def sampled_var(self):
@@ -83,7 +85,7 @@ class ProbabilityType(object):
         raise NotImplementedError
 
 
-class DiagGaussian(ProbabilityType):
+class DiagGaussian(PDF):
     '''Multivariate Gaussian policy characterized by a D-dimensional mean
        vector and a diagonal covariance matrix.
     '''
@@ -155,6 +157,7 @@ class DiagGaussian(ProbabilityType):
 
 
 def kln(a,b):
+    '''Numpy implementation of KL for sanity check.'''
     a = np.array(a)
     b = np.array(b)
     d = int(a.shape[1]/2)
@@ -163,15 +166,9 @@ def kln(a,b):
     mb = b[:,:d]
     sb = b[:,d:]
 
-    kl = (np.log(sb/sa)).sum(1) +\
-            ((sa**2 + (ma - mb)**2 )/(2*sb**2)).sum(1) - 0.5 * d
+    kl = (np.log(sb/sa)).sum(1) + ((sa**2 + (ma - mb)**2 )/\
+            (2*sb**2)).sum(1) - 0.5 * d
     return kl
-
-
-    return tf.reduce_sum(tf.log(tf.divide(std_b,std_a)), axis=1) + \
-             tf.reduce_sum((tf.square(std_a) + tf.square(mu_a - mu_b) /\
-             (2.0 * tf.square(std_b))), axis=1) - (0.5 * self.D)/2
-
 
 
 if __name__=='__main__':
