@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+from ipdb import set_trace as debug
 
 dtype='float32'
 
@@ -52,7 +53,6 @@ def flat_gradient(loss, var_list):
     return tf.concat([tf.reshape(grad, [numel(v)]) for (v,grad) in \
             zip(var_list, grads)],0)
 
-
 def slice_2d(x, indx0, indx1):
     '''Takes a two dimensional slice through a tensor.'''
     indx0 = tf.cast(indx0, tf.int32)
@@ -83,7 +83,8 @@ class SetFromFlat(object):
         assigns = []
         for (shape, v) in zip(shapes, params):
             size = np.prod(shape)
-            assigns.append(v, tf.reshape(theta[start:start+size],shape))
+            assigns.append( tf.assign(v, \
+                    tf.reshape(theta[start:start+size],shape)))
             start += size
 
         # Create a tensorflow operation that makes the above assignment.
@@ -93,7 +94,7 @@ class SetFromFlat(object):
         '''Given a flat theta vector, put these values back into our neural
            network.
         '''
-        self.op.eval(session=self.session, feed_dict={self.theta: theta})
+        self.session.run(self.op, feed_dict={self.theta: theta})
 
 
 class GetFlat(object):
@@ -104,7 +105,7 @@ class GetFlat(object):
         self.op = tf.concat([tf.reshape(v, [numel(v)]) for v in params], axis=0)
 
     def __call__(self):
-        '''Evalutate the tensorflow concatentation operation.'''
+        '''Evaluate the tensorflow concatentation operation.'''
         return self.op.eval(session=self.session)
 
 
@@ -157,14 +158,15 @@ def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
 
 
 def linesearch(f, x, fullstep, expected_improve_rate):
-    '''Performs conjugate gradient descent.
+    '''Performs a linesearch in direction of fullstep, starting at x, in
+    order to minimize f.
     ARGS
         f - function
             Function evaluating the cost at point x.
         x - array_like
             The starting point of the line search.
         full_step - array_like
-            The direction in which we should be looking.
+            The direction in which we should be searching.
         expected_improve_rate - float
             Based on local slope, how much improvement do we expect?
     OUT

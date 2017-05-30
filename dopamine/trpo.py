@@ -219,12 +219,25 @@ class TRPOAgent(object):
             # Determine the maximum allowable step size.
             quadratic_term = 0.5 * natural_direction.dot(\
                     fisher_vector_product(natural_direction))
-            max_stepsize = np.sqrt(self.cfg['epsilon']/quadratic_term)
+            lagrange_multiplier = np.sqrt(quadratic_term/self.cfg['epsilon'])
+            full_step = natural_direction/lagrange_multiplier
+            expected_improvement_rate = -g.dot(natural_direction)
 
             # Now line search to update theta.
-            def linesearch_loss(theta):
+            def surrogate_loss(theta):
+                print(theta)
                 self.set_from_flat(theta)
-                return self.
+                return self.session.run(self.loss, feed_dict=feed)
+
+            previous_loss = self.session.run(self.loss, feed_dict=feed)
+
+            # Use a linesearch to take largest step possible.
+            debug()
+            theta_new = linesearch(surrogate_loss, theta_previous, full_step,\
+                    expected_improvement_rate)
+            self.set_from_flat(theta_new)
+            new_loss = self.session.run(self.loss, feed_dict=feed)
+
 
 
         return advantages
