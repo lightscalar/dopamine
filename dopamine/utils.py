@@ -133,6 +133,10 @@ def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
             The number of iterations that we allow.
         tol - float [default: 1e-10]
             The residual tolerance. If we drop below this, stop iterating.
+    OUT
+        x - array_like
+            The approximate solution to the problem Ax = b, as determined by
+            the conjugate gradient method.
     '''
     p = b.copy()
     r = b.copy()
@@ -150,3 +154,34 @@ def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
         if rdotr < tol:
             break
     return x
+
+
+def linesearch(f, x, fullstep, expected_improve_rate):
+    '''Performs conjugate gradient descent.
+    ARGS
+        f - function
+            Function evaluating the cost at point x.
+        x - array_like
+            The starting point of the line search.
+        full_step - array_like
+            The direction in which we should be looking.
+        expected_improve_rate - float
+            Based on local slope, how much improvement do we expect?
+    OUT
+        x - array_like
+            The best solution found along the specified line.
+    '''
+    accept_ratio = .1
+    max_backtracks = 10
+    fval = f(x)
+    for (_n_backtracks, stepfrac) in enumerate(.5**np.arange(max_backtracks)):
+        xnew = x + stepfrac * fullstep
+        newfval = f(xnew)
+        actual_improve = fval - newfval
+        expected_improve = expected_improve_rate * stepfrac
+        ratio = actual_improve / expected_improve
+        if ratio > accept_ratio and actual_improve > 0:
+            return xnew
+    return x
+
+

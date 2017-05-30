@@ -38,6 +38,7 @@ class TRPOAgent(object):
         cfg.setdefault('gamma', 0.99)
         cfg.setdefault('lambda', 0.96)
         cfg.setdefault('cg_damping', 0.1)
+        cfg.setdefault('epsilon', 0.01)
         self.cfg = cfg
 
         # And here is the policy that we're trying to optimize.
@@ -55,8 +56,9 @@ class TRPOAgent(object):
         self.advantages = advantages = tf.placeholder(dtype, [None])
 
         # Compute the surrogate loss function.
-        logp = self.pdf.loglikelihood(actions_taken, action_vectors)
-        logp_old = self.pdf.loglikelihood(actions_taken, action_vectors_old)
+        self.logp = logp = self.pdf.loglikelihood(actions_taken, action_vectors)
+        self.logp_old = logp_old = self.pdf.loglikelihood(actions_taken,\
+                action_vectors_old)
         log_ratio = logp/logp_old
         self.loss = loss = -tf.reduce_mean( log_ratio * self.advantages )
         self.policy_gradient = flat_gradient(self.loss, network_params)
@@ -191,21 +193,39 @@ class TRPOAgent(object):
                     path in paths])
 
             # 3. TRPO update of policy ----------------------------------------
+            theta_previous = self.get_flat()
 
             # Normalize the advantages.
             advantages -= advantages.mean()
             advantages /= (advantages.std() + 1e-8)
 
-            # Load up results for update.
+            # Load up dict for the big update.
             feed = {self.action_vectors_old: action_vectors,
                     self.actions_taken: actions_taken,
                     self.state_vectors: state_vectors,
-                    self.advantages: advantages.flatten(),
-                    self.action_vectors_old: action_vectors}
+                    self.advantages: advantages.flatten()}
 
             def fisher_vector_product(p):
                 feed[self.flat_tangent] = p
-                return self.session.run(self.fvp, feed) + cfg['cg_damping'] * p
+                return self.session.run(self.fvp, feed) + \
+                        self.cfg['cg_damping'] * p
+
+            # Compute the current gradient (the g in Fx = g).
+            g = self.session.run(self.policy_gradient, feed_dict=feed)
+
+            # Use conjugate gradient to find natural gradient direction.
+            natural_direction = conjugate_gradient(fisher_vector_product, -g)
+
+            # Determine the maximum allowable step size.
+            quadratic_term = 0.5 * natural_direction.dot(\
+                    fisher_vector_product(natural_direction))
+            max_stepsize = np.sqrt(self.cfg['epsilon']/quadratic_term)
+
+            # Now line search to update theta.
+            def linesearch_loss(theta):
+                self.set_from_flat(theta)
+                return self.
+
 
         return advantages
 
@@ -222,7 +242,7 @@ if __name__ == '__main__':
     state_vector = tf.placeholder('float32', [None, env.D])
 
     # Create the policy model.
-    layer_config = [(64, tf.nn.relu), (64, tf.nn.relu), (2*nb_actions, None)]
+    layer_config = [(64, tf.nn.relu), (64, tf.nn.relu), (nb_actions, None)]
     policy = SimpleNet(state_vector, layer_config)
     pdf = DiagGaussian(nb_actions)
 

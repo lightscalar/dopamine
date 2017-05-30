@@ -108,10 +108,8 @@ class SimpleNet(object):
     def param_dim(self):
         '''Return the total dimension of the parameter space.'''
         dim = 0
-        for _, w in self.weights.items():
-            dim += numel(w)
-        for _, b in self.biases.items():
-            dim += numel(b)
+        for p in self.params:
+            dim += numel(p)
         return dim
 
 
