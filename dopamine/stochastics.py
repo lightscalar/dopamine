@@ -6,6 +6,7 @@ from ipdb import set_trace as debug
 
 # Specify the data type we're using.
 dtype = tf.float32
+std_mag = 2
 
 
 class PDF(object):
@@ -73,8 +74,8 @@ class DiagGaussian(PDF):
         '''
         mu = parameter_vector[:, :self.D]
         # std = parameter_vector[:, self.D:]
-        std = 0.10 * tf.abs(mu) # TODO: specify stddev in a smarter way.
-
+        # std = 0.10 * tf.abs(mu) # TODO: specify stddev in a smarter way.
+        std = std_mag * tf.ones_like(mu)
         return -0.5 * tf.reduce_sum(tf.square( (x-mu)/std ), axis=1)\
                 -0.5 * tf.log(2*np.pi) * self.D\
                 -tf.reduce_sum(tf.log(std), axis=1)
@@ -90,8 +91,8 @@ class DiagGaussian(PDF):
         # std_a = param_vector_a[:, self.D:]
         # std_b = param_vector_b[:, self.D:]
         # TODO: specify standard deviations in a smarter way.
-        std_a = 0.1 * tf.abs(mu_a)
-        std_b = 0.1 * tf.abs(mu_b)
+        std_a = std_mag * tf.ones_like(mu_a)
+        std_b = std_mag * tf.ones_like(mu_b)
         std_a2 = tf.square(std_a)
         mean_diff2 = tf.square(mu_a - mu_b)
         denom = 2 * tf.square(std_b)
@@ -110,7 +111,8 @@ class DiagGaussian(PDF):
         '''Sample a vector from this multivariate density function!'''
         mu = param_vector[:, :self.D]
         # std = param_vector[:, self.D:]
-        std = 0.1 * tf.abs(mu)
+        std = std_mag * tf.ones_like(mu)
+        # std = 0.1 * tf.abs(mu) + 1e-2
         M = tf.shape(param_vector)[0]
         return mu + std * tf.random_normal((M,self.D))
 
@@ -124,13 +126,15 @@ def kl_numpy(a,b):
     '''Numpy implementation of KL for sanity check.'''
     a = np.array(a)
     b = np.array(b)
-    d = int(a.shape[1]/2)
+    d = int(a.shape[1])
     mu_a = a[:,:d]
     std_a = a[:,d:]
-    std_a = 0.1 * mu_a
+    std_a = std_mag * np.abs(mu_a) + 1e-2
+    std_a = std_mag * np.ones_like(mu_a)
     mu_b = b[:,:d]
     std_b = b[:,d:]
-    std_b = 0.1 * mu_b
+    std_b = std_mag * np.abs(mu_b) + 1e-2
+    std_b = std_mag * np.ones_like(mu_b)
     mu_b = b[:,:d]
     std_a2 = np.square(std_a)
     mean_diff2 = np.square(mu_a - mu_b)
@@ -147,7 +151,8 @@ def loglike_numpy(x, a):
     d = int(a.shape[1]/2)
     mu = a[:,:d]
     std = a[:,d:]
-    std = 0.1 * mu
+    # std = 0.1 * np.abs(mu) + 1e-2
+    std = std_mag * np.ones_like(mu)
     term1 = -0.5 * ((x - mu)**2/std**2).sum(axis=1)
     term2 = -0.5 * np.log(2*np.pi) * d
     term3 = -np.log(std).sum(axis=1)

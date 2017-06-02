@@ -73,27 +73,42 @@ class SimpleNet(object):
                 self.targets))
 
         # Create the optimizer (for use in value function fitting, etc.)
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.1).\
+        # self.optimizer = tf.train.AdamOptimizer().\
+        #         minimize(self.square_loss)
+        # self.optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-4).\
+        #         minimize(self.square_loss)
+        self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=0.1).\
                 minimize(self.square_loss)
 
 
     def fit(self, session, x, y, nb_itr=500, batch_size=1000, tol=1e-2):
         '''Fit network to batch data (x,y) using stochastic gradient descent.'''
         N = x.shape[0]
-        batch_size = np.min([batch_size, N])
+        if not batch_size:
+            batch_size = N
+        else:
+            batch_size = np.min([batch_size, N])
+
+        # for itr in range(nb_itr):
         cost = 1e4
-        for _ in range(2000):
+        itr = 0
+        while cost > 1.0:
             samples = np.random.permutation(N)[:batch_size]
             x_ = x[samples,:]
             y_ = y[samples,:]
-            fd = {self.x: x_, self.y: y_}
+            fd = {self.inputs: x_, self.targets: y_}
             _, cost = session.run([self.optimizer, self.square_loss],\
                     feed_dict=fd)
-            print(cost)
+            if np.mod(itr, 50) == 0:
+                print('> Current loss: {:0.3f}'.format(cost))
+            itr += 1
+            if itr > nb_itr: break
+            # if cost < 1:
+            #     break
 
     def predict(self, sess, x_):
         '''Forward propagate the specified state, x_, through the network.'''
-        return sess.run(self.output, feed_dict={self.x: x_})
+        return sess.run(self.outputs, feed_dict={self.inputs: x_})
 
     def __call__(self, sess, x_):
         '''Alias for the predict method.'''

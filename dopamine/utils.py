@@ -1,8 +1,83 @@
 import tensorflow as tf
 import numpy as np
 from ipdb import set_trace as debug
+from keras.models import Sequential
+from keras.layers import Dense
+from scipy.signal import lfilter
+from dopamine.running_stats import *
+
 
 dtype='float32'
+
+
+class ZFilter(object):
+    """
+    y = (x-mean)/std
+    using running estimates of mean,std
+    """
+
+    def __init__(self, shape, demean=True, destd=True, clip=10.0):
+        self.demean = demean
+        self.destd = destd
+        self.clip = clip
+        self.rs = RunningStat(shape)
+
+    def __call__(self, x, update=True):
+        if update: self.rs.push(x)
+        if self.demean:
+            x = x - self.rs.mean
+        if self.destd:
+            x = x / (self.rs.std+1e-8)
+        if self.clip:
+            x = np.clip(x, -self.clip, self.clip)
+        return x
+
+    def output_shape(self, input_space):
+        return input_space.shape
+
+
+def filter_states(state, states):
+    '''Filter the states using a running mean/std.'''
+    if len(states)>0:
+        running_mean = np.mean(states)
+        running_std = np.std(states)
+        return (state - running_mean)/running_std
+    else:
+        return
+
+def discount(x, gamma):
+    """
+    computes discounted sums along 0th dimension of x.
+    inputs
+    ------
+    x: ndarray
+    gamma: float
+    outputs
+    -------
+    y: ndarray with same shape as x, satisfying
+        y[t] = x[t] + gamma*x[t+1] + gamma^2*x[t+2] + ... + gamma^k x[t+k],
+                where k = len(x) - t - 1
+    """
+    assert x.ndim >= 1
+    return lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
+
+
+def create_mlp(layers, cfg=None):
+    '''Creates a Keras-based MLP.'''
+    cfg = cfg if cfg else {}
+    cfg.setdefault('optimizer', 'rmsprop')
+    cfg.setdefault('loss', 'mae')
+
+    model = Sequential()
+    for layer in layers:
+        layer.setdefault('units', 64)
+        layer.setdefault('activation', 'relu')
+        layer.setdefault('activation', 'relu')
+        layer.setdefault('kernel_initializer', 'glorot_normal')
+        model.add(Dense(**layer))
+
+    model.compile(**cfg)
+    return model
 
 
 def discounted_sum(r, discount_factor):
@@ -53,6 +128,7 @@ def flat_gradient(loss, var_list):
     return tf.concat([tf.reshape(grad, [numel(v)]) for (v,grad) in \
             zip(var_list, grads)],0)
 
+
 def slice_2d(x, indx0, indx1):
     '''Takes a two dimensional slice through a tensor.'''
     indx0 = tf.cast(indx0, tf.int32)
@@ -72,7 +148,7 @@ class SetFromFlat(object):
         self.session = session
 
         # Collect shapes of weights and biases in the neural network.
-        shapes = map(var_shape, params)
+        shapes = [*map(var_shape, params)]
 
         # Compute total length of the theta vector.
         total_size = np.sum(np.prod(shape) for shape in shapes)
@@ -81,20 +157,20 @@ class SetFromFlat(object):
         # Loop through all variables; reshape portions of theta back into the
         # W matrices and b vectors, etc.
         assigns = []
-        for (shape, v) in zip(shapes, params):
+        start = 0
+        for (shape, param) in zip(shapes, params):
             size = np.prod(shape)
-            assigns.append( tf.assign(v, \
-                    tf.reshape(theta[start:start+size],shape)))
+            assigns.append(tf.assign(param, \
+                    tf.reshape(theta[start:start+size], shape)))
             start += size
 
-        # Create a tensorflow operation that makes the above assignment.
-        self.op = tf.group(*assigns)
+        # Create a tensorflow operation that executes these assignments.
+        self.todo = tf.group(*assigns)
 
     def __call__(self, theta):
         '''Given a flat theta vector, put these values back into our neural
-           network.
-        '''
-        self.session.run(self.op, feed_dict={self.theta: theta})
+           network weights/biases.'''
+        self.session.run(self.todo, feed_dict={self.theta: theta})
 
 
 class GetFlat(object):
@@ -111,7 +187,7 @@ class GetFlat(object):
 
 def make_tangents(tangent, params):
     '''Build list of variables that map network parameters to a flat tangent.'''
-    shapes = map(var_shape, params)
+    shapes = [*map(var_shape, params)]
     start = 0
     tangents = []
     for shape in shapes:
@@ -122,7 +198,7 @@ def make_tangents(tangent, params):
     return tangents
 
 
-def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
+def conjugate_gradient(f_Ax, b, cg_iters=100, tol=1e-10):
     '''Performs conjugate gradient descent.
     ARGS
         f_Ax - function
@@ -143,6 +219,8 @@ def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
     r = b.copy()
     x = np.zeros_like(b)
     rdotr = r.dot(r)
+    minval = np.inf
+    bestx = x
     for i in range(cg_iters):
         z = f_Ax(p)
         v = rdotr / p.dot(z)
@@ -152,6 +230,9 @@ def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
         mu = newrdotr / rdotr
         p = r + mu * p
         rdotr = newrdotr
+        if rdotr < minval:
+            bestx = x
+        print('RDOT: {:.4f}'.format(rdotr))
         if rdotr < tol:
             break
     return x
@@ -182,8 +263,12 @@ def linesearch(f, x, fullstep, expected_improve_rate):
         actual_improve = fval - newfval
         expected_improve = expected_improve_rate * stepfrac
         ratio = actual_improve / expected_improve
-        if ratio > accept_ratio and actual_improve > 0:
-            return xnew
-    return x
+        print('A/E/R: {:.3f}/{:.3f}/{:.3f}'.\
+                format(actual_improve, expected_improve, ratio))
+        if (ratio > accept_ratio) and (actual_improve > 0):
+            print('Line search success.')
+            return True, xnew
+    print('Line search fail.')
+    return False, x
 
 

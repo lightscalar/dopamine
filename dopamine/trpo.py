@@ -5,6 +5,11 @@ from dopamine.lineworld import *
 from dopamine.net import SimpleNet
 from dopamine.utils import *
 from ipdb import set_trace as debug
+import pylab as plt
+from keras import regularizers
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from keras.layers.normalization import BatchNormalization
 
 
 class TRPOAgent(object):
@@ -29,14 +34,15 @@ class TRPOAgent(object):
         # Here is the environment we'll be simulating, and pdf.
         self.env = env
         self.pdf = pdf
+        self.pf = None
 
         # Set up configuration (if None is passed, fill empty dict).
         cfg = cfg if cfg else {}
 
         # Set defaults for TRPO optimizer.
-        cfg.setdefault('episodes_per_step', 2)
+        cfg.setdefault('episodes_per_step', 25)
         cfg.setdefault('gamma', 0.99)
-        cfg.setdefault('lambda', 0.96)
+        cfg.setdefault('lambda', 0.97)
         cfg.setdefault('cg_damping', 0.1)
         cfg.setdefault('epsilon', 0.01)
         self.cfg = cfg
@@ -45,11 +51,11 @@ class TRPOAgent(object):
         self.policy = policy
 
         # Define variables of interest.
-        network_params = policy.params
+        self.network_params = network_params = policy.trainable_weights
 
         # Action vector is the [mean, std] of the Gaussian action density.
-        self.state_vectors = state_vectors = policy.inputs
-        self.action_vectors = action_vectors = policy.outputs
+        self.state_vectors = state_vectors = policy.input
+        self.action_vectors = action_vectors = policy.output
         self.action_vectors_old = action_vectors_old = \
                 self.pdf.parameter_vector
         self.actions_taken = actions_taken = self.pdf.sample(action_vectors)
@@ -59,9 +65,9 @@ class TRPOAgent(object):
         self.logp = logp = self.pdf.loglikelihood(actions_taken, action_vectors)
         self.logp_old = logp_old = self.pdf.loglikelihood(actions_taken,\
                 action_vectors_old)
-        log_ratio = logp/logp_old
-        self.loss = loss = -tf.reduce_mean( log_ratio * self.advantages )
+        self.loss = -tf.reduce_mean(tf.exp(logp)/tf.exp(logp_old) * advantages)
         self.policy_gradient = flat_gradient(self.loss, network_params)
+        # surr = (-1.0 / N) * T.exp(logp_n - oldlogp_n).dot(adv_n)
 
         # The number of observations.
         N = state_vectors.shape[0]
@@ -71,6 +77,9 @@ class TRPOAgent(object):
         action_vectors_fixed = tf.stop_gradient(action_vectors)
         kl_first_fixed = pdf.kl(action_vectors_fixed, action_vectors)
         self.expected_kl = expected_kl = tf.reduce_mean(kl_first_fixed)
+
+        self.kl_oldnew = tf.reduce_mean(pdf.kl(action_vectors,\
+                action_vectors_old))
 
         # Now we compute the gradients of the expected KL divergence.
         self.grads = grads = tf.gradients(expected_kl, network_params,\
@@ -95,36 +104,41 @@ class TRPOAgent(object):
 
         # Use another SimpleNet to model our value function.
         self.states = tf.placeholder(dtype, [None, env.D])
-        vf_layers = [(64, tf.nn.relu), (64, tf.nn.relu), (1, None)]
-        self.value_function = SimpleNet(self.states, vf_layers)
-        self.vf = self.value_function.outputs
-
-        # Paths will contain (state, reward, action) tuples for trajectories.
-        self.paths = []
+        layers = []
+        layers.append({'input_dim': self.env.D, 'units': 128})
+        layers.append({'units': 1, 'activation': 'linear'})
+        self.vf_model = create_mlp(layers, {'loss': 'mse'})
 
         # Initialize all of our variables.
         init = tf.global_variables_initializer()
         self.session.run(init)
 
-    def compute_deltas(self, path):
-        '''Computes the deltas given observed states, rewards, and current
-        value function.'''
-        states = path['state_vectors']
-        rewards = path['rewards']
-        # Estimate the state values using the neural network.
-        values = self.session.run(self.vf, feed_dict={self.states: states})
-        # Now compute the delta.
-        delta_t = np.zeros_like(values)
-        delta_t[:-1] = -values[:-1] + rewards[:-1] + self.cfg['gamma'] *\
-                values[1:]
-        delta_t[-1] = rewards[-1] # Last element value is just its reward
-        return delta_t
-
-    def compute_advantages(self, path):
+    def compute_advantages(self, path, vf):
         '''Computes advantages, give delta estimates.'''
-        deltas = self.compute_deltas(path)
+        gamma = self.cfg['gamma']
         gl = (self.cfg['gamma'] * self.cfg['lambda'])
-        path['advantages'] = discounted_sum(deltas, gl)
+        path["returns"] = discount(path["rewards"], gamma)
+        b = path['baseline'] = vf
+        b1 = np.append(b, 0)
+        deltas = path["rewards"].flatten() + gamma*b1[1:] - b1[:-1]
+        path['advantages'] = discount(deltas, gl)
+        path['advantages'] = path['returns'] # q-function
+        return path
+
+    def compute_values(self, path):
+        '''Compute the values along a trajectory.'''
+        gamma = self.cfg['gamma']
+        path['values'] = discount(path['rewards'], gamma)
+        return path
+
+    def get_baseline(self, path):
+        '''Return the predicted returns.'''
+        return self.session.run(self.vf, feed_dict={self.states: path['state_vectors']})
+
+    def get_advantages(self, path):
+        path['baseline'] = self.get_baseline(path)
+        path['values'] = discounted_sum(path['rewards'], self.cfg['gamma'])
+        path['advantages'] = path['values'] - path['baseline']
         return path
 
     def simulate(self):
@@ -133,18 +147,29 @@ class TRPOAgent(object):
         # Initialize these things!
         paths = []
 
+        print('> Simulating episodes.')
         for itr in range(self.cfg['episodes_per_step']):
 
-            print('Simulating episode {:d}'.format(itr))
             states, actions, action_vectors, rewards = [], [], [], []
 
             # Initialize the current state of the system.
             state = self.env.reset()
             done = False
+            position = []
+
+            state_filter = ZFilter(state.shape, demean=False, destd=False, clip=None)
+            reward_filter = ZFilter((), demean=False, destd=False, clip=5)
 
             while (not done): # keep simulating until episode terminates.
 
                 # Estimate the action based on current policy!
+                # obs = np.hstack( (state, prev_state) )
+                x = 1.0*state[0][0]
+                position.append(x)
+
+                # state = state_filter(state)
+                # state = state_filter(state)
+                states.append(state)
                 action_vector, action = self.act(state)
                 action_vector = action_vector.tolist()
                 action = action.tolist()
@@ -152,17 +177,20 @@ class TRPOAgent(object):
                 # Now take a step!
                 state, reward, done = self.env.step(action)
 
+                # Filter the rewards.
+                # reward = reward_filter(reward)
+                rewards.append(reward)
+
                 # Store these things for later.
-                states.append(state)
                 actions.append(action[0])
                 action_vectors.append(action_vector[0])
-                rewards.append(reward)
 
             # Assemble all useful path information.
             path = {'state_vectors': np.vstack(states),
                     'rewards': np.vstack(rewards),
                     'action_vectors': np.vstack(action_vectors),
-                    'actions': np.vstack(actions)}
+                    'actions': np.vstack(actions),
+                    'position': np.vstack(position)}
             paths.append(path)
         return paths
 
@@ -171,18 +199,33 @@ class TRPOAgent(object):
         return self.session.run([self.action_vectors, self.actions_taken], \
                 feed_dict={self.state_vectors: state})
 
+    def update_value_fn(self, path, epochs):
+        '''Train our neural network on current values.'''
+        returns = discount(path['rewards'], self.cfg['gamma'])
+        states = path['state_vectors']
+        self.vf_model.fit(states, returns, epochs=epochs, batch_size=10000, verbose=False)
+
+    def estimate_value(self, paths):
+        '''Time dependent estimate value.'''
+        values = []
+        for path in paths:
+            values.append(discount(path['rewards'], 0.99).T)
+        return np.vstack(values).mean(0)
 
     def learn(self):
         '''Learn to control an agent in an environment.'''
 
-        for _ in range(1):
+        for _itr in range(9000):
 
             # 1. Simulate paths using current policy --------------------------
             paths = self.simulate()
+            print(paths[0]['state_vectors'][0])
 
             # 2. Generalized Advantage Estimation -----------------------------
+            vf = self.estimate_value(paths)
             for path in paths:
-                path = self.compute_advantages(path)
+                # path = self.get_advantages(path)
+                path = self.compute_advantages(path, vf)
 
             # 2b. Assemble necessary data -------------------------------------
             state_vectors = np.concatenate([path['state_vectors'] for \
@@ -191,13 +234,16 @@ class TRPOAgent(object):
             actions_taken = np.concatenate([path['actions'] for path in paths])
             action_vectors = np.concatenate([path['action_vectors'] for \
                     path in paths])
+            returns = np.concatenate([path['returns'] for path in paths])
+            # returns -= returns.mean()
+            # returns /= returns.std()
 
             # 3. TRPO update of policy ----------------------------------------
-            theta_previous = self.get_flat()
+            theta_previous = 1*self.get_flat()
 
             # Normalize the advantages.
-            advantages -= advantages.mean()
-            advantages /= (advantages.std() + 1e-8)
+            # advantages -= advantages.mean()
+            # advantages /= (advantages.std() + 1e-8)
 
             # Load up dict for the big update.
             feed = {self.action_vectors_old: action_vectors,
@@ -221,28 +267,57 @@ class TRPOAgent(object):
                     fisher_vector_product(natural_direction))
             lagrange_multiplier = np.sqrt(quadratic_term/self.cfg['epsilon'])
             full_step = natural_direction/lagrange_multiplier
-            expected_improvement_rate = -g.dot(natural_direction)
+            expected_improvement_rate = -g.dot(natural_direction)/\
+                    lagrange_multiplier
 
             # Now line search to update theta.
             def surrogate_loss(theta):
-                print(theta)
                 self.set_from_flat(theta)
+                self.policy.set_weights(self.session.run(self.network_params))
                 return self.session.run(self.loss, feed_dict=feed)
 
-            previous_loss = self.session.run(self.loss, feed_dict=feed)
+            old_loss = surrogate_loss(theta_previous)
 
-            # Use a linesearch to take largest step possible.
-            debug()
-            theta_new = linesearch(surrogate_loss, theta_previous, full_step,\
+            # Use a linesearch to take largest useful step.
+            success, theta_new = linesearch(surrogate_loss, theta_previous, full_step,\
                     expected_improvement_rate)
-            self.set_from_flat(theta_new)
-            new_loss = self.session.run(self.loss, feed_dict=feed)
 
+            # GRADIENT DESCENT!
+            # theta_new = theta_previous - 1e-6 * g
+            # self.set_from_flat(theta_new)
 
+            print('Iteration: {:d}'.format(_itr))
+            print('> Fitting the value function.')
+
+            # self.vf_model.fit(state_vectors, returns, epochs=1000, batch_size=10000)
+            # Compute the new KL divergence.
+            kl = self.session.run(self.kl_oldnew, feed_dict=feed)
+            print(np.linalg.norm(theta_new - theta_previous))
+
+            if kl > 5*self.cfg['epsilon']:
+                self.set_from_flat(theta_previous) # assigns old theta.
+            else:
+                print ('> Updating theta.')
+                self.set_from_flat(theta_new)
+                self.policy.set_weights(self.session.run(self.network_params))
+
+            mean_rewards = np.array(
+                [path["rewards"].mean() for path in paths])
+            print('> KL divergence: {:.3f}'.format(kl))
+            print('> Mean Reward: {:.4f}'.format(mean_rewards.mean()))
+            print('> Surrogate Loss: {:.4}'.format(surrogate_loss(theta_new)))
+            # return state_vectors, values
+            if np.mod(_itr,1) == 0:
+                plt.figure(100);
+                plt.clf()
+                for path in paths:
+                    plt.plot(path['position'], 'grey')
+                    plt.ylim([-10,10])
+                plt.plot(plt.xlim(), [5,5])
+                plt.show()
+                plt.pause(0.05)
 
         return advantages
-
-
 
 
 if __name__ == '__main__':
@@ -255,8 +330,13 @@ if __name__ == '__main__':
     state_vector = tf.placeholder('float32', [None, env.D])
 
     # Create the policy model.
-    layer_config = [(64, tf.nn.relu), (64, tf.nn.relu), (nb_actions, None)]
-    policy = SimpleNet(state_vector, layer_config)
+    # layer_config = [(32, tf.nn.relu), (32, tf.nn.relu), (nb_actions, None)]
+    # policy = SimpleNet(state_vector, layer_config)
+    layers = []
+    layers.append({'input_dim': env.D, 'units': 32})
+    layers.append({'units': 1, 'activation': 'tanh'})
+    policy = create_mlp(layers)
+
     pdf = DiagGaussian(nb_actions)
 
     # So we have our three necessary objects! Let's create a TRPO agent.
@@ -264,7 +344,25 @@ if __name__ == '__main__':
     paths = agent.learn()
 
 
+    layers = []
+    layers.append({'input_dim': 3, 'units': 20})
+    layers.append({'units': 1, 'activation': 'relu'})
+    model = create_mlp(layers, {'loss': 'mse'})
 
 
+    state_vectors = np.concatenate([path['state_vectors'] for \
+            path in paths])
+    returns = np.concatenate([path['returns'] for path in paths])
 
+    model.fit(state_vectors, -1*returns, epochs=500, batch_size=5000)
 
+    x = paths[1]['state_vectors']
+    y = paths[1]['returns']
+    y_ = model.predict(x)
+
+    plt.ion()
+    plt.close('all')
+    plt.figure(100)
+    plt.plot(x[:,0],y, label='Actual Value')
+    plt.plot(x[:,0], y_, label='Value Estimate')
+    plt.xlim([-20,20])

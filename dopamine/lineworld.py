@@ -11,6 +11,7 @@ class LineWorld(object):
     '''
 
     def __init__(self):
+        self.inpt = 0
         self.x = 10 * np.random.rand()
         self.vx = 0
         self.ax_mag = 0.5
@@ -25,15 +26,15 @@ class LineWorld(object):
 
         # We have a one-dimensional continuous action space now.
         # The action here is simply the acceleration at this instant.
+        # self.inpt = action[0][0]
+        # self.ax = 10 * ((1/(1+np.exp(-self.inpt/20))) - 0.5)
         self.ax = action[0][0]
-        if np.abs(self.ax)>10:
-            # We limit the maximum acceleration that can be requested.
-            self.ax = np.sign(self.ax) * 10
 
         # Update position.
         self.t += self.dt
         self.x += self.vx * self.dt
         self.vx += self.ax * self.dt
+        # self.reward = np.exp(-self._distance_to_target/10)
         self.reward = -self._distance_to_target
         self.total_steps += 1
 
@@ -56,7 +57,10 @@ class LineWorld(object):
     @property
     def state(self):
         '''The currently observed state of the system.'''
-        return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
+        # return np.atleast_2d([self.x])
+        # return np.atleast_2d([self.x, self.vx])
+        return np.atleast_2d([self.x, self.vx, self.ax])
+        # return np.atleast_2d([self.x, self.vx, self.ax, self.target_x])
 
     @property
     def D(self):
@@ -69,6 +73,7 @@ class LineWorld(object):
 
     def reset(self):
         '''Reset state vector, time, velocity, etc.'''
+        self.inpt = 0
         self.x, self.vx, self.t = 10*np.random.rand(), 2*np.random.randn(), 0
         return self.state
 
@@ -92,23 +97,25 @@ if __name__ == '__main__':
 
     # Make an environment.
     env = LineWorld()
+    pdf = DiagGaussian(1)
 
     x = []
     done = False
-    while not done:
+    param = pdf.parameter_vector
+    sample = pdf.sample(param)
+    with tf.Session() as sess:
+        while not done:
 
-        # Simple random gaussian policy.
-        action = [0, np.log(1.25)]
+            # Simple random gaussian policy.
+            action = sess.run(sample, feed_dict={param: [[0]]})
+            print(action)
 
-        # Step the simulation.
-        state, reward, done = env.step(action)
-        x.append(state[0][0])
+            # Step the simulation.
+            state, reward, done = env.step(action)
+            x.append(state[0][0])
 
     # Plot this guy.
     from mathtools.vanity import *
     setup_plotting()
     import seaborn
     plot(x)
-
-
-
