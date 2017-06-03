@@ -6,7 +6,7 @@ from ipdb import set_trace as debug
 
 # Specify the data type we're using.
 dtype = tf.float32
-std_mag = 2
+std_mag = 0.5
 
 
 class PDF(object):

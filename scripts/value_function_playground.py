@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 from dopamine.net import SimpleNet
 from dopamine.utils import *
+import pylab as plt
 
 
 # Specify data type for the tensors.
@@ -67,7 +68,8 @@ if __name__ == '__main__':
 
     # Create our neural network.
     x = tf.placeholder(dtype, [None, 2])
-    layers = [(64, tf.nn.relu), (64, tf.nn.relu), (1, None)]
+    layers = [(64, tf.nn.relu), (1, None)]
+    layers = [(32, tf.nn.relu), (1, None)]
     net = SimpleNet(x, layers)
 
     sess = tf.Session()
@@ -77,6 +79,12 @@ if __name__ == '__main__':
     sess.run(init)
 
     # Train the network.
-    net.fit(sess, X_train, y_train, nb_itr=15000, batch_size=100)
+    net.fit(sess, X_train, y_train, nb_itr=50000, batch_size=1000)
+
+    plt.figure(100)
+    plt.clf()
+    plt.plot(net.predict(sess, X_train), y_train, 'o')
+    plt.show()
+    plt.title('Should be a straight line.')
 
 

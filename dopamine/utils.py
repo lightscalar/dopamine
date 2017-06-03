@@ -198,7 +198,7 @@ def make_tangents(tangent, params):
     return tangents
 
 
-def conjugate_gradient(f_Ax, b, cg_iters=100, tol=1e-10):
+def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
     '''Performs conjugate gradient descent.
     ARGS
         f_Ax - function

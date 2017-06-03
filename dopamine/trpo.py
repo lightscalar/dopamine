@@ -4,12 +4,12 @@ from dopamine.agent import Agent
 from dopamine.lineworld import *
 from dopamine.net import SimpleNet
 from dopamine.utils import *
+from dopamine.values import *
 from ipdb import set_trace as debug
 import pylab as plt
 from keras import regularizers
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
-from keras.layers.normalization import BatchNormalization
 
 
 class TRPOAgent(object):
@@ -40,10 +40,10 @@ class TRPOAgent(object):
         cfg = cfg if cfg else {}
 
         # Set defaults for TRPO optimizer.
-        cfg.setdefault('episodes_per_step', 25)
+        cfg.setdefault('episodes_per_step', 20)
         cfg.setdefault('gamma', 0.99)
         cfg.setdefault('lambda', 0.97)
-        cfg.setdefault('cg_damping', 0.1)
+        cfg.setdefault('cg_damping', 0.2)
         cfg.setdefault('epsilon', 0.01)
         self.cfg = cfg
 
@@ -103,26 +103,33 @@ class TRPOAgent(object):
         self.set_from_flat = SetFromFlat(self.session, network_params)
 
         # Use another SimpleNet to model our value function.
-        self.states = tf.placeholder(dtype, [None, env.D])
-        layers = []
-        layers.append({'input_dim': self.env.D, 'units': 128})
-        layers.append({'units': 1, 'activation': 'linear'})
-        self.vf_model = create_mlp(layers, {'loss': 'mse'})
+        # self.states = tf.placeholder(dtype, [None, env.D])
+        # layers = []
+        # layers.append({'input_dim': self.env.D, 'units': 128})
+        # layers.append({'units': 1, 'activation': 'linear'})
+        # self.vf_model = create_mlp(layers, {'loss': 'mse'})
+        self.vf = ValueFunction(env.D, self.session)
 
         # Initialize all of our variables.
         init = tf.global_variables_initializer()
         self.session.run(init)
 
-    def compute_advantages(self, path, vf):
+        # Load previous training parameters.
+        # self.policy.load_weights('excellent_run')
+        # weights = self.policy.get_weights()
+        # theta = np.concatenate([np.reshape(x, np.prod(x.shape)) for x in weights])
+        # self.set_from_flat(theta)
+
+    def compute_advantages(self, path):
         '''Computes advantages, give delta estimates.'''
         gamma = self.cfg['gamma']
         gl = (self.cfg['gamma'] * self.cfg['lambda'])
         path["returns"] = discount(path["rewards"], gamma)
-        b = path['baseline'] = vf
+        b = path['baseline'] # = vf
         b1 = np.append(b, 0)
         deltas = path["rewards"].flatten() + gamma*b1[1:] - b1[:-1]
         path['advantages'] = discount(deltas, gl)
-        path['advantages'] = path['returns'] # q-function
+        # path['advantages'] = path['returns'] # q-function
         return path
 
     def compute_values(self, path):
@@ -199,11 +206,12 @@ class TRPOAgent(object):
         return self.session.run([self.action_vectors, self.actions_taken], \
                 feed_dict={self.state_vectors: state})
 
-    def update_value_fn(self, path, epochs):
+    def update_value_fn(self, path, returns, epochs=500):
         '''Train our neural network on current values.'''
-        returns = discount(path['rewards'], self.cfg['gamma'])
+        # returns = discount(path['rewards'], self.cfg['gamma'])
+        # returns = self.estimate_value(
         states = path['state_vectors']
-        self.vf_model.fit(states, returns, epochs=epochs, batch_size=10000, verbose=False)
+        self.vf_model.fit(states, returns, epochs=epochs, batch_size=10000)
 
     def estimate_value(self, paths):
         '''Time dependent estimate value.'''
@@ -222,10 +230,12 @@ class TRPOAgent(object):
             print(paths[0]['state_vectors'][0])
 
             # 2. Generalized Advantage Estimation -----------------------------
-            vf = self.estimate_value(paths)
+            # vf = self.estimate_value(paths)
+            self.vf.predict(paths)
             for path in paths:
                 # path = self.get_advantages(path)
-                path = self.compute_advantages(path, vf)
+                path = self.compute_advantages(path)
+                # self.update_value_fn(path, vf)
 
             # 2b. Assemble necessary data -------------------------------------
             state_vectors = np.concatenate([path['state_vectors'] for \
@@ -276,20 +286,14 @@ class TRPOAgent(object):
                 self.policy.set_weights(self.session.run(self.network_params))
                 return self.session.run(self.loss, feed_dict=feed)
 
-            old_loss = surrogate_loss(theta_previous)
-
             # Use a linesearch to take largest useful step.
             success, theta_new = linesearch(surrogate_loss, theta_previous, full_step,\
                     expected_improvement_rate)
 
-            # GRADIENT DESCENT!
-            # theta_new = theta_previous - 1e-6 * g
-            # self.set_from_flat(theta_new)
-
             print('Iteration: {:d}'.format(_itr))
             print('> Fitting the value function.')
+            self.vf.fit(paths)
 
-            # self.vf_model.fit(state_vectors, returns, epochs=1000, batch_size=10000)
             # Compute the new KL divergence.
             kl = self.session.run(self.kl_oldnew, feed_dict=feed)
             print(np.linalg.norm(theta_new - theta_previous))
@@ -333,7 +337,8 @@ if __name__ == '__main__':
     # layer_config = [(32, tf.nn.relu), (32, tf.nn.relu), (nb_actions, None)]
     # policy = SimpleNet(state_vector, layer_config)
     layers = []
-    layers.append({'input_dim': env.D, 'units': 32})
+    layers.append({'input_dim': env.D, 'units': 16})
+    # layers.append({'units': 32})
     layers.append({'units': 1, 'activation': 'tanh'})
     policy = create_mlp(layers)
 
@@ -343,26 +348,6 @@ if __name__ == '__main__':
     agent = TRPOAgent(env, policy, pdf)
     paths = agent.learn()
 
+    vf = ValueFunction(3, agent.session)
+    vf.fit(paths)
 
-    layers = []
-    layers.append({'input_dim': 3, 'units': 20})
-    layers.append({'units': 1, 'activation': 'relu'})
-    model = create_mlp(layers, {'loss': 'mse'})
-
-
-    state_vectors = np.concatenate([path['state_vectors'] for \
-            path in paths])
-    returns = np.concatenate([path['returns'] for path in paths])
-
-    model.fit(state_vectors, -1*returns, epochs=500, batch_size=5000)
-
-    x = paths[1]['state_vectors']
-    y = paths[1]['returns']
-    y_ = model.predict(x)
-
-    plt.ion()
-    plt.close('all')
-    plt.figure(100)
-    plt.plot(x[:,0],y, label='Actual Value')
-    plt.plot(x[:,0], y_, label='Value Estimate')
-    plt.xlim([-20,20])

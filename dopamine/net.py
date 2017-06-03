@@ -1,7 +1,8 @@
 import numpy as np
 import tensorflow as tf
-from dopamine.utils import *
-from ipdb import set_trace as debug
+import pylab as plt
+from tensorflow.contrib.opt import ScipyOptimizerInterface
+dtype = 'float32'
 
 
 class SimpleNet(object):
@@ -61,7 +62,7 @@ class SimpleNet(object):
         self.outputs = layer
 
         # Define our target data placeholder.
-        self.targets = tf.placeholder(dtype, [None, layer.shape[1]])
+        self.targets = tf.placeholder(dtype, [None, layer.shape[1]], name='targets')
 
         # Keep track of the trainable parameters of this network.
         self.params = []
@@ -75,10 +76,10 @@ class SimpleNet(object):
         # Create the optimizer (for use in value function fitting, etc.)
         # self.optimizer = tf.train.AdamOptimizer().\
         #         minimize(self.square_loss)
-        # self.optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-4).\
-        #         minimize(self.square_loss)
-        self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=0.1).\
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-3).\
                 minimize(self.square_loss)
+        # self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=0.1).\
+        #         minimize(self.square_loss)
 
 
     def fit(self, session, x, y, nb_itr=500, batch_size=1000, tol=1e-2):
@@ -92,7 +93,7 @@ class SimpleNet(object):
         # for itr in range(nb_itr):
         cost = 1e4
         itr = 0
-        while cost > 1.0:
+        while cost > tol:
             samples = np.random.permutation(N)[:batch_size]
             x_ = x[samples,:]
             y_ = y[samples,:]
@@ -100,11 +101,9 @@ class SimpleNet(object):
             _, cost = session.run([self.optimizer, self.square_loss],\
                     feed_dict=fd)
             if np.mod(itr, 50) == 0:
-                print('> Current loss: {:0.3f}'.format(cost))
+                print('> Loss at iteration {:d}: {:0.3f}'.format(itr, cost))
             itr += 1
             if itr > nb_itr: break
-            # if cost < 1:
-            #     break
 
     def predict(self, sess, x_):
         '''Forward propagate the specified state, x_, through the network.'''
@@ -131,33 +130,51 @@ class SimpleNet(object):
 
 if __name__ == '__main__':
 
-    # Start over again!
-    tf.reset_default_graph()
+    # Create a function to learn.
+    def func(x):
+        return np.atleast_2d(3 * x[:,0]**1 + 2 * x[:,1]**2).T
+        return np.atleast_2d(np.sin(x[:,0])**2 + np.cos(2*np.pi*x[:,1]/0.6)).T
 
-    # Define our network.
-    x = tf.placeholder('float32', [None, 5])
-    output_dim = 2
-    layers = [(64, tf.nn.relu), (64, tf.nn.relu), (output_dim, None)]
+    # Sample data.
+    M = 5000
+    X_train = np.random.uniform(2*np.pi, size=(M,2))
+    y_train = func(X_train)
+
+    # Create our neural network.
+    x = tf.placeholder(dtype, [None, 2], name='neuralinput')
+    layers = [(64, tf.nn.relu), (1, None)] # 64 hidden units; RELU activation
+    # layers = [(32, tf.nn.relu), (1, None)] # 32 hidden units; RELU activation
     net = SimpleNet(x, layers)
-    layers = [(32, tf.nn.relu), (32, tf.nn.relu), (output_dim, None)]
-    net_2 = SimpleNet(x, layers)
+    sess = tf.Session()
 
-    # Create some sample data.
-    nb_samples = 126
-    x_ = np.random.randn(126, 5)
+    ins = net.inputs
+    tgt = net.targets
 
-    # Forward propagate this data through the network.
+    feed = {ins: X_train, tgt: y_train}
+
+    # Initialize.
     init = tf.global_variables_initializer()
-    with tf.Session() as sess:
-        pred = net.output
-        sess.run(init)
-        out = sess.run(pred, feed_dict={x: x_})
-        out_2 = net.predict(x_, sess)
-        all_vars = sess.run(net.vars)
+    sess.run(init)
 
-    assert( out.shape == (nb_samples, output_dim) )
+    # Create the thing.
+    loss = net.square_loss
+    optimizer = ScipyOptimizerInterface(loss, options={'maxiter':100})
+    optimizer.minimize(sess, feed_dict=feed)
+    cost = sess.run(net.square_loss, feed_dict={net.inputs: X_train, net.targets: y_train})
+    print(cost)
 
-    # If we're talking about softmax output.
-    # assert (np.sum(out, 1).mean() == 1)
+    # Train the network.
+    # net.fit(sess, X_train, y_train, nb_itr=20000, batch_size=1000)
+
+
+    plt.figure(100)
+    plt.clf()
+    plt.plot(y_train, net.predict(sess, X_train), 'o')
+    plt.show()
+    plt.title('Should be approximately a straight line')
+    plt.xlabel('Actual')
+    plt.ylabel('Predicted')
+    plt.axes().set_aspect('equal')
+    plt.grid(True)
 
 
