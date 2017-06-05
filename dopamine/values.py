@@ -18,7 +18,7 @@ class ValueFunction(object):
         # Build the neural network
         self.inputs = tf.placeholder(dtype, [None, input_dim])
         layers = [(64, tf.nn.relu), (1, None)]
-        cfg.setdefault('max_lbfgs_iters', 25)
+        cfg.setdefault('max_lbfgs_iters', 125)
         cfg.setdefault('layers', layers)
         cfg.setdefault('gamma', 0.99)
         self.model = SimpleNet(self.inputs, cfg['layers'])

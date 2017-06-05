@@ -314,10 +314,17 @@ class TRPOAgent(object):
             if np.mod(_itr,1) == 0:
                 plt.figure(100);
                 plt.clf()
+                plt.subplot(211)
                 for path in paths:
                     plt.plot(path['position'], 'grey')
                     plt.ylim([-10,10])
                 plt.plot(plt.xlim(), [5,5])
+                plt.show()
+
+                plt.subplot(212)
+                for path in paths:
+                    plt.plot(path['state_vectors'][:,2], 'grey')
+                    plt.ylim([-1,1])
                 plt.show()
                 plt.pause(0.05)
 
