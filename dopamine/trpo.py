@@ -1,16 +1,18 @@
 import tensorflow as tf
 import numpy as np
+import pylab as plt
 from dopamine.agent import Agent
 from dopamine.lineworld import *
 from dopamine.net import SimpleNet
 from dopamine.utils import *
 from dopamine.values import *
 from ipdb import set_trace as debug
-import pylab as plt
-from keras import regularizers
 from keras.models import Sequential
-from keras.layers import Dense, Dropout
+from keras.layers import Dense
 from keras import backend
+import logging
+logging.basicConfig(level=logging.INFO)
+
 
 class TRPOAgent(object):
     '''Trust Region Policy Optimizer.'''
@@ -31,6 +33,7 @@ class TRPOAgent(object):
         # Create a tensorflow session.
         self.session = tf.Session()
         backend.set_session(self.session)
+        self.info = logging.info
 
         # Here is the environment we'll be simulating, and pdf.
         self.env = env
@@ -46,8 +49,9 @@ class TRPOAgent(object):
         cfg.setdefault('lambda', 0.96)
         cfg.setdefault('cg_damping', 0.1)
         cfg.setdefault('epsilon', 0.01)
-        cfg.setdefault('weight_file', 'default_weights.data')
-        cfg.setdefault('do_load_weights', False)
+        cfg.setdefault('weight_file', 'weights_policy.dat')
+        cfg.setdefault('iterations_per_save', 10)
+        cfg.setdefault('load_weights', False)
         cfg.setdefault('make_plots', True)
         self.cfg = cfg
 
@@ -110,23 +114,30 @@ class TRPOAgent(object):
         self.session.run(init)
 
         # Load previous training parameters.
-        if cfg['do_load_weights']:
-            self.policy.load_weights('excellent_run')
+        if cfg['load_weights']:
+            self.policy.load_weights(self.cfg['weight_file'])
             weights = self.policy.get_weights()
             theta = np.concatenate([np.reshape(x, np.prod(x.shape)) \
                     for x in weights])
             self.set_from_flat(theta)
 
-    def compute_advantages(self, path):
+    def save_weights(self):
+        '''Save weights for policy and value function.'''
+        self.info('> Saving weights.')
+        self.policy.save_weights(self.cfg['weight_file'])
+        self.vf.save_weights()
+
+
+    def compute_advantages(self, paths):
         '''Computes advantages, give delta estimates.'''
         gamma = self.cfg['gamma']
         gl = (self.cfg['gamma'] * self.cfg['lambda'])
-        path["returns"] = discount(path["rewards"], gamma)
-        b = path['baseline']
-        b1 = np.append(b, 0)
-        deltas = path["rewards"].flatten() + gamma*b1[1:] - b1[:-1]
-        path['advantages'] = discount(deltas, gl)
-        return path
+        for path in paths:
+            path["returns"] = discount(path["rewards"], gamma)
+            b = path['baseline']
+            b1 = np.append(b, 0)
+            deltas = path["rewards"].flatten() + gamma*b1[1:] - b1[:-1]
+            path['advantages'] = discount(deltas, gl)
 
     def simulate(self):
         '''Simulate the environment with respect to the given policy.'''
@@ -134,7 +145,7 @@ class TRPOAgent(object):
         # Initialize these things!
         paths = []
 
-        print('> Simulating episodes.')
+        self.info('> Simulating episodes.')
         for itr in range(self.cfg['episodes_per_step']):
 
             states, actions, action_vectors, rewards = [], [], [], []
@@ -180,20 +191,6 @@ class TRPOAgent(object):
         return self.session.run([self.action_vectors, self.actions_taken], \
                 feed_dict={self.state_vectors: state})
 
-    def update_value_fn(self, path, returns, epochs=500):
-        '''Train our neural network on current values.'''
-        # returns = discount(path['rewards'], self.cfg['gamma'])
-        # returns = self.estimate_value(
-        states = path['state_vectors']
-        self.vf_model.fit(states, returns, epochs=epochs, batch_size=10000)
-
-    def estimate_value(self, paths):
-        '''Time dependent estimate value.'''
-        values = []
-        for path in paths:
-            values.append(discount(path['rewards'], 0.99).T)
-        return np.vstack(values).mean(0)
-
     def learn(self):
         '''Learn to control an agent in an environment.'''
 
@@ -201,15 +198,11 @@ class TRPOAgent(object):
 
             # 1. Simulate paths using current policy --------------------------
             paths = self.simulate()
-            print(paths[0]['state_vectors'][0])
+            self.info(paths[0]['state_vectors'][0])
 
             # 2. Generalized Advantage Estimation -----------------------------
-            # vf = self.estimate_value(paths)
             self.vf.predict(paths)
-            for path in paths:
-                # path = self.get_advantages(path)
-                path = self.compute_advantages(path)
-                # self.update_value_fn(path, vf)
+            self.compute_advantages(paths)
 
             # 2b. Assemble necessary data -------------------------------------
             state_vectors = np.concatenate([path['state_vectors'] for \
@@ -261,25 +254,29 @@ class TRPOAgent(object):
             success, theta_new = linesearch(surrogate_loss, theta_previous,\
                     full_step, expected_improvement_rate)
 
-            print('Iteration: {:d}'.format(_itr))
-            print('> Fitting the value function.')
+            self.info('Iteration: {:d}'.format(_itr))
+            self.info('> Fitting the value function.')
             self.vf.fit(paths)
 
             # Compute the new KL divergence.
             kl = self.session.run(self.kl_oldnew, feed_dict=feed)
-            print(np.linalg.norm(theta_new - theta_previous))
 
-            if kl > 5*self.cfg['epsilon']:
+            if kl > 2*self.cfg['epsilon']: # No big steps!
                 self.set_from_flat(theta_previous) # assigns old theta.
             else:
-                print ('> Updating theta.')
+                self.info ('> Updating theta.')
                 self.set_from_flat(theta_new)
 
             mean_rewards = np.array(
                 [path["rewards"].mean() for path in paths])
-            print('> KL divergence: {:.3f}'.format(kl))
-            print('> Mean Reward: {:.4f}'.format(mean_rewards.mean()))
-            print('> Surrogate Loss: {:.4}'.format(surrogate_loss(theta_new)))
+            self.info('> KL divergence: {:.3f}'.format(kl))
+            self.info('> Mean Reward: {:.4f}'.format(mean_rewards.mean()))
+            self.info('> Surrogate Loss: {:.4}'.format(\
+                    surrogate_loss(theta_new)))
+
+            if np.mod(_itr, self.cfg['iterations_per_save']) == 0:
+                self.info('Saving policy and value function weights.')
+                self.save_weights()
 
             if self.cfg['make_plots']:
                 if np.mod(_itr,1) == 0:

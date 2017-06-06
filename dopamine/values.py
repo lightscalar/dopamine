@@ -19,11 +19,11 @@ class ValueFunction(object):
         self.cfg = cfg
 
         # Build the neural network via KERAS.
-        layers = [(64, tf.nn.relu), (1, None)]
         cfg.setdefault('max_lbfgs_iters', 125)
         cfg.setdefault('gamma', 0.99)
+        cfg.setdefault('save_file', 'weights_value_fn.dat')
         self.net = Sequential()
-        self.net.add(Dense(input_shape=(input_dim,), units=64,\
+        self.net.add(Dense(input_shape=(input_dim,), units=16,\
                 activation='relu'))
         self.net.add(Dense(1, activation='linear'))
         self.input = self.net.input
@@ -57,3 +57,8 @@ class ValueFunction(object):
             feed = {self.input: path['state_vectors']}
             path['baseline'] = self.session.run(self.output, feed_dict=feed)
         return paths
+
+    def save_weights(self):
+        '''Save current weights to specified file.'''
+        filename = self.cfg['save_file']
+        self.net.save_weights(filename)
