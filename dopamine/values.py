@@ -18,23 +18,21 @@ class ValueFunction(object):
         cfg = cfg if cfg else {}
         self.cfg = cfg
 
-        # Build the neural network
-        self.input = tf.placeholder(dtype, [None, input_dim])
+        # Build the neural network via KERAS.
         layers = [(64, tf.nn.relu), (1, None)]
         cfg.setdefault('max_lbfgs_iters', 125)
-        cfg.setdefault('layers', layers)
         cfg.setdefault('gamma', 0.99)
-        # self.model = SimpleNet(self.input, cfg['layers'])
-        self.output = Dense(64, activation='relu')(self.input)
-        self.output = Dense(1, activation='linear')(self.output)
+        self.net = Sequential()
+        self.net.add(Dense(input_shape=(input_dim,), units=64,\
+                activation='relu'))
+        self.net.add(Dense(1, activation='linear'))
+        self.input = self.net.input
+        self.output = self.net.output
 
         # Use an LBFGS optimizer (borrowed from SCIPY).
         self.target = tf.placeholder(dtype, [None, 1])
         self.loss = loss = tf.reduce_mean(tf.squared_difference(\
                 self.output, self.target))
-        # self.loss = loss = self.model.square_loss
-        # self.output = self.model.output
-        # self.target = self.model.target
         maxiters = self.cfg['max_lbfgs_iters']
         self.optimizer = ScipyOptimizerInterface(loss, \
                 options={'maxiter':maxiters})

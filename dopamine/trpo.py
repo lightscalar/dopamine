@@ -10,7 +10,7 @@ import pylab as plt
 from keras import regularizers
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
-
+from keras import backend
 
 class TRPOAgent(object):
     '''Trust Region Policy Optimizer.'''
@@ -30,6 +30,7 @@ class TRPOAgent(object):
 
         # Create a tensorflow session.
         self.session = tf.Session()
+        backend.set_session(self.session)
 
         # Here is the environment we'll be simulating, and pdf.
         self.env = env
@@ -254,7 +255,6 @@ class TRPOAgent(object):
             # Now line search to update theta.
             def surrogate_loss(theta):
                 self.set_from_flat(theta)
-                self.policy.set_weights(self.session.run(self.network_params))
                 return self.session.run(self.loss, feed_dict=feed)
 
             # Use a linesearch to take largest useful step.
@@ -274,7 +274,6 @@ class TRPOAgent(object):
             else:
                 print ('> Updating theta.')
                 self.set_from_flat(theta_new)
-                self.policy.set_weights(self.session.run(self.network_params))
 
             mean_rewards = np.array(
                 [path["rewards"].mean() for path in paths])
@@ -307,11 +306,8 @@ if __name__ == '__main__':
     state_vector = tf.placeholder('float32', [None, env.D])
 
     # Create the policy model.
-    # layer_config = [(32, tf.nn.relu), (32, tf.nn.relu), (nb_actions, None)]
-    # policy = SimpleNet(state_vector, layer_config)
     layers = []
     layers.append({'input_dim': env.D, 'units': 16})
-    # layers.append({'units': 32})
     layers.append({'units': 1, 'activation': 'tanh'})
     policy = create_mlp(layers)
     pdf = DiagGaussian(nb_actions)
