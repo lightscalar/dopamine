@@ -1,5 +1,6 @@
 import numpy as np
 from dopamine.stochastics import *
+import pylab as plt
 from ipdb import set_trace as debug
 
 
@@ -39,6 +40,18 @@ class LineWorld(object):
         self.total_steps += 1
 
         return self.state, self.reward, self.done
+
+    def render(self, paths, fignum=100):
+        '''Illustrate trajectories.'''
+        plt.figure(fignum);
+        plt.clf()
+        for path in paths:
+            plt.plot(path['state_vectors'][:,0], 'red')
+            plt.ylim([-20, 20])
+        plt.plot(plt.xlim(), [5,5])
+        plt.show()
+        plt.grid(True)
+        plt.pause(0.05)
 
     @property
     def _distance_to_target(self):

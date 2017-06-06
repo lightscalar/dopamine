@@ -280,37 +280,6 @@ class TRPOAgent(object):
 
             if self.cfg['make_plots']:
                 if np.mod(_itr,1) == 0:
-                    plt.figure(100);
-                    plt.clf()
-                    for path in paths:
-                        plt.plot(path['state_vectors'][:,0], 'red')
-                        plt.ylim([-20, 20])
-                    plt.plot(plt.xlim(), [5,5])
-                    plt.show()
-                    plt.grid(True)
-                    plt.title('Iteration {:d}'.format(_itr))
-                    plt.pause(0.05)
+                    self.env.render(paths)
+
         return advantages
-
-
-if __name__ == '__main__':
-
-    # Create a lineworld instance.
-    env = LineWorld()
-    nb_actions = env.nb_actions
-
-    # Create a placeholder for inputs to the policy.
-    state_vector = tf.placeholder('float32', [None, env.D])
-
-    # Create the policy model.
-    layers = []
-    layers.append({'input_dim': env.D, 'units': 16})
-    layers.append({'units': 1, 'activation': 'tanh'})
-    policy = create_mlp(layers)
-    pdf = DiagGaussian(nb_actions)
-
-    # So we have our three necessary objects! Let's create a TRPO agent.
-    agent = TRPOAgent(env, policy, pdf)
-    paths = agent.learn()
-
-

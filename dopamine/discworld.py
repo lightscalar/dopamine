@@ -3,7 +3,7 @@ from dopamine.stochastics import *
 from ipdb import set_trace as debug
 
 
-class LineWorld(object):
+class DiscWorld(object):
     '''This provides a simulation environment for testing reinforcement
        learning algorithms. It provides a one-dimensional space with a one-
        dimensional action space. Action is a Gaussian random variable
@@ -69,6 +69,19 @@ class LineWorld(object):
     def D(self):
         '''Returns dimension of the state space.'''
         return self.state.shape[1]
+
+    def render(self, paths, fignum=100):
+        '''Illustrate trajectories.'''
+        plt.figure(fignum);
+        plt.clf()
+        for path in paths:
+            plt.plot(path['state_vectors'][:,0],path['state_vectors'][:,1],\
+                    'red')
+            plt.ylim([-20, 20])
+            plt.xlim([-20, 20])
+        plt.show()
+        plt.grid(True)
+        plt.pause(0.05)
 
     @property
     def steps_per_episode(self):
