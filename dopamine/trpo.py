@@ -41,10 +41,13 @@ class TRPOAgent(object):
 
         # Set defaults for TRPO optimizer.
         cfg.setdefault('episodes_per_step', 20)
-        cfg.setdefault('gamma', 0.99)
-        cfg.setdefault('lambda', 0.97)
-        cfg.setdefault('cg_damping', 0.2)
+        cfg.setdefault('gamma', 0.995)
+        cfg.setdefault('lambda', 0.96)
+        cfg.setdefault('cg_damping', 0.1)
         cfg.setdefault('epsilon', 0.01)
+        cfg.setdefault('weight_file', 'default_weights.data')
+        cfg.setdefault('do_load_weights', False)
+        cfg.setdefault('make_plots', True)
         self.cfg = cfg
 
         # And here is the policy that we're trying to optimize.
@@ -65,12 +68,8 @@ class TRPOAgent(object):
         self.logp = logp = self.pdf.loglikelihood(actions_taken, action_vectors)
         self.logp_old = logp_old = self.pdf.loglikelihood(actions_taken,\
                 action_vectors_old)
-        self.loss = -tf.reduce_mean(tf.exp(logp)/tf.exp(logp_old) * advantages)
+        self.loss = -tf.reduce_mean(tf.exp(logp - logp_old) * advantages)
         self.policy_gradient = flat_gradient(self.loss, network_params)
-        # surr = (-1.0 / N) * T.exp(logp_n - oldlogp_n).dot(adv_n)
-
-        # The number of observations.
-        N = state_vectors.shape[0]
 
         # Compute expected KL divergence (but exclude first argument from
         # gradient computations).
@@ -102,12 +101,7 @@ class TRPOAgent(object):
         self.get_flat = GetFlat(self.session, network_params)
         self.set_from_flat = SetFromFlat(self.session, network_params)
 
-        # Use another SimpleNet to model our value function.
-        # self.states = tf.placeholder(dtype, [None, env.D])
-        # layers = []
-        # layers.append({'input_dim': self.env.D, 'units': 128})
-        # layers.append({'units': 1, 'activation': 'linear'})
-        # self.vf_model = create_mlp(layers, {'loss': 'mse'})
+        # Estimate vvalue function using another neural network.
         self.vf = ValueFunction(env.D, self.session)
 
         # Initialize all of our variables.
@@ -115,37 +109,22 @@ class TRPOAgent(object):
         self.session.run(init)
 
         # Load previous training parameters.
-        # self.policy.load_weights('excellent_run')
-        # weights = self.policy.get_weights()
-        # theta = np.concatenate([np.reshape(x, np.prod(x.shape)) for x in weights])
-        # self.set_from_flat(theta)
+        if cfg['do_load_weights']:
+            self.policy.load_weights('excellent_run')
+            weights = self.policy.get_weights()
+            theta = np.concatenate([np.reshape(x, np.prod(x.shape)) \
+                    for x in weights])
+            self.set_from_flat(theta)
 
     def compute_advantages(self, path):
         '''Computes advantages, give delta estimates.'''
         gamma = self.cfg['gamma']
         gl = (self.cfg['gamma'] * self.cfg['lambda'])
         path["returns"] = discount(path["rewards"], gamma)
-        b = path['baseline'] # = vf
+        b = path['baseline']
         b1 = np.append(b, 0)
         deltas = path["rewards"].flatten() + gamma*b1[1:] - b1[:-1]
         path['advantages'] = discount(deltas, gl)
-        # path['advantages'] = path['returns'] # q-function
-        return path
-
-    def compute_values(self, path):
-        '''Compute the values along a trajectory.'''
-        gamma = self.cfg['gamma']
-        path['values'] = discount(path['rewards'], gamma)
-        return path
-
-    def get_baseline(self, path):
-        '''Return the predicted returns.'''
-        return self.session.run(self.vf, feed_dict={self.states: path['state_vectors']})
-
-    def get_advantages(self, path):
-        path['baseline'] = self.get_baseline(path)
-        path['values'] = discounted_sum(path['rewards'], self.cfg['gamma'])
-        path['advantages'] = path['values'] - path['baseline']
         return path
 
     def simulate(self):
@@ -164,18 +143,12 @@ class TRPOAgent(object):
             done = False
             position = []
 
-            state_filter = ZFilter(state.shape, demean=False, destd=False, clip=None)
-            reward_filter = ZFilter((), demean=False, destd=False, clip=5)
-
             while (not done): # keep simulating until episode terminates.
 
                 # Estimate the action based on current policy!
-                # obs = np.hstack( (state, prev_state) )
                 x = 1.0*state[0][0]
                 position.append(x)
 
-                # state = state_filter(state)
-                # state = state_filter(state)
                 states.append(state)
                 action_vector, action = self.act(state)
                 action_vector = action_vector.tolist()
@@ -245,15 +218,13 @@ class TRPOAgent(object):
             action_vectors = np.concatenate([path['action_vectors'] for \
                     path in paths])
             returns = np.concatenate([path['returns'] for path in paths])
-            # returns -= returns.mean()
-            # returns /= returns.std()
 
             # 3. TRPO update of policy ----------------------------------------
             theta_previous = 1*self.get_flat()
 
             # Normalize the advantages.
-            # advantages -= advantages.mean()
-            # advantages /= (advantages.std() + 1e-8)
+            advantages -= advantages.mean()
+            advantages /= (advantages.std() + 1e-8)
 
             # Load up dict for the big update.
             feed = {self.action_vectors_old: action_vectors,
@@ -287,8 +258,8 @@ class TRPOAgent(object):
                 return self.session.run(self.loss, feed_dict=feed)
 
             # Use a linesearch to take largest useful step.
-            success, theta_new = linesearch(surrogate_loss, theta_previous, full_step,\
-                    expected_improvement_rate)
+            success, theta_new = linesearch(surrogate_loss, theta_previous,\
+                    full_step, expected_improvement_rate)
 
             print('Iteration: {:d}'.format(_itr))
             print('> Fitting the value function.')
@@ -310,24 +281,19 @@ class TRPOAgent(object):
             print('> KL divergence: {:.3f}'.format(kl))
             print('> Mean Reward: {:.4f}'.format(mean_rewards.mean()))
             print('> Surrogate Loss: {:.4}'.format(surrogate_loss(theta_new)))
-            # return state_vectors, values
-            if np.mod(_itr,1) == 0:
-                plt.figure(100);
-                plt.clf()
-                plt.subplot(211)
-                for path in paths:
-                    plt.plot(path['position'], 'grey')
-                    plt.ylim([-10,10])
-                plt.plot(plt.xlim(), [5,5])
-                plt.show()
 
-                plt.subplot(212)
-                for path in paths:
-                    plt.plot(path['state_vectors'][:,2], 'grey')
-                    plt.ylim([-1,1])
-                plt.show()
-                plt.pause(0.05)
-
+            if self.cfg['make_plots']:
+                if np.mod(_itr,1) == 0:
+                    plt.figure(100);
+                    plt.clf()
+                    for path in paths:
+                        plt.plot(path['state_vectors'][:,0], 'red')
+                        plt.ylim([-20, 20])
+                    plt.plot(plt.xlim(), [5,5])
+                    plt.show()
+                    plt.grid(True)
+                    plt.title('Iteration {:d}'.format(_itr))
+                    plt.pause(0.05)
         return advantages
 
 
@@ -348,13 +314,10 @@ if __name__ == '__main__':
     # layers.append({'units': 32})
     layers.append({'units': 1, 'activation': 'tanh'})
     policy = create_mlp(layers)
-
     pdf = DiagGaussian(nb_actions)
 
     # So we have our three necessary objects! Let's create a TRPO agent.
     agent = TRPOAgent(env, policy, pdf)
     paths = agent.learn()
 
-    vf = ValueFunction(3, agent.session)
-    vf.fit(paths)
 

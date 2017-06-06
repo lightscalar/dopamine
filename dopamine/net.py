@@ -20,7 +20,7 @@ class SimpleNet(object):
         # Initialize the weights and biases of the network.
         self.params_dict = {}
         self.layers = {}
-        self.inputs = inputs
+        self.input = inputs
         _inputs = inputs
 
         # Input data dictates the size of the input layer.
@@ -59,28 +59,25 @@ class SimpleNet(object):
             n_in = int(n_out)
 
         # Final layer output is our network.
-        self.outputs = layer
+        self.output = layer
 
         # Define our target data placeholder.
-        self.targets = tf.placeholder(dtype, [None, layer.shape[1]], name='targets')
+        self.target = tf.placeholder(dtype, [None, layer.shape[1]], \
+                name='target')
 
         # Keep track of the trainable parameters of this network.
         self.params = []
+        self.trainable_weights = self.params # compatible with Keras API.
         for k, param in self.params_dict.items():
             self.params.append(param)
 
         # Compute the square loss.
-        self.square_loss =  tf.reduce_mean(tf.squared_difference(self.outputs,\
-                self.targets))
+        self.square_loss =  tf.reduce_mean(tf.squared_difference(self.output,\
+                self.target))
 
         # Create the optimizer (for use in value function fitting, etc.)
-        # self.optimizer = tf.train.AdamOptimizer().\
-        #         minimize(self.square_loss)
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-3).\
                 minimize(self.square_loss)
-        # self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=0.1).\
-        #         minimize(self.square_loss)
-
 
     def fit(self, session, x, y, nb_itr=500, batch_size=1000, tol=1e-2):
         '''Fit network to batch data (x,y) using stochastic gradient descent.'''
@@ -97,7 +94,7 @@ class SimpleNet(object):
             samples = np.random.permutation(N)[:batch_size]
             x_ = x[samples,:]
             y_ = y[samples,:]
-            fd = {self.inputs: x_, self.targets: y_}
+            fd = {self.input: x_, self.target: y_}
             _, cost = session.run([self.optimizer, self.square_loss],\
                     feed_dict=fd)
             if np.mod(itr, 50) == 0:
@@ -107,16 +104,11 @@ class SimpleNet(object):
 
     def predict(self, sess, x_):
         '''Forward propagate the specified state, x_, through the network.'''
-        return sess.run(self.outputs, feed_dict={self.inputs: x_})
+        return sess.run(self.output, feed_dict={self.input: x_})
 
     def __call__(self, sess, x_):
         '''Alias for the predict method.'''
         return self.predict(sess, x_)
-
-    @property
-    def theta(self):
-        '''Return a flattened version of all network parameters.'''
-        theta = np.array([])
 
     @property
     def param_dim(self):
@@ -125,7 +117,6 @@ class SimpleNet(object):
         for p in self.params:
             dim += numel(p)
         return dim
-
 
 
 if __name__ == '__main__':
@@ -147,8 +138,8 @@ if __name__ == '__main__':
     net = SimpleNet(x, layers)
     sess = tf.Session()
 
-    ins = net.inputs
-    tgt = net.targets
+    ins = net.input
+    tgt = net.target
 
     feed = {ins: X_train, tgt: y_train}
 
@@ -158,13 +149,12 @@ if __name__ == '__main__':
 
     # Create the thing.
     loss = net.square_loss
-    optimizer = ScipyOptimizerInterface(loss, options={'maxiter':100})
+    optimizer = ScipyOptimizerInterface(loss, options={'maxiter':1000})
     optimizer.minimize(sess, feed_dict=feed)
-    cost = sess.run(net.square_loss, feed_dict={net.inputs: X_train, net.targets: y_train})
+    cost = sess.run(net.square_loss, feed_dict={net.input: X_train, \
+            net.target: y_train})
     print(cost)
 
-    # Train the network.
-    # net.fit(sess, X_train, y_train, nb_itr=20000, batch_size=1000)
 
 
     plt.figure(100)
