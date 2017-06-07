@@ -75,14 +75,14 @@ class DiscWorld(object):
         plt.figure(fignum);
         plt.clf()
         for path in paths:
-            X Coordinate
+            # X coordinate.
             plt.subplot(211)
             plt.plot(path['state_vectors'][:,0], 'red')
             plt.ylim([-20, 20])
             plt.plot(plt.xlim(), [5,5])
             plt.grid(True)
 
-            # Y Coordinate
+            # Y coordinate.
             plt.subplot(212)
             plt.plot(path['state_vectors'][:,0], 'red')
             plt.plot(plt.xlim(), [5,5])

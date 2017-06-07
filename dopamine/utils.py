@@ -9,18 +9,18 @@ dtype='float32'
 
 
 def discount(x, gamma):
-    """
-    computes discounted sums along 0th dimension of x.
-    inputs
-    ------
-    x: ndarray
-    gamma: float
-    outputs
-    -------
-    y: ndarray with same shape as x, satisfying
-        y[t] = x[t] + gamma*x[t+1] + gamma^2*x[t+2] + ... + gamma^k x[t+k],
-                where k = len(x) - t - 1
-    """
+    '''Computes discounted reward sums along x.
+    INPUTS
+        x - array_like
+            Input rewards
+        gamma - float
+            The discount factor.
+    OUTPUTS
+        y - array_like
+            An array with same shape as x, satisfying
+                y[t] = x[t] + gamma*x[t+1] +  ... + gamma^k x[t+k],
+            where k = len(x) - t - 1
+    '''
     assert x.ndim >= 1
     return lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
 
