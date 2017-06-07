@@ -1,4 +1,5 @@
 import numpy as np
+import pylab as plt
 from dopamine.stochastics import *
 from ipdb import set_trace as debug
 
@@ -37,7 +38,6 @@ class DiscWorld(object):
         self.y += self.vy * self.dt
         self.vx += self.ax * self.dt
         self.vy += self.ay * self.dt
-        # self.reward = np.exp(-self._distance_to_target/10)
         self.reward = -self._distance_to_target
         self.total_steps += 1
 
@@ -51,8 +51,8 @@ class DiscWorld(object):
 
     @property
     def nb_actions(self):
-        '''Only a single scalar-valued action available here.'''
-        return 1
+        '''Continuous actions corresponding to horizontal/vertical thrust.'''
+        return 2
 
     @property
     def done(self):
