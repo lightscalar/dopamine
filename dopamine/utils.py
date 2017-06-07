@@ -103,7 +103,7 @@ def slice_2d(x, indx0, indx1):
     return tf.gather(x_flat, indx0 * ncols + indx1)
 
 
-class SetFromFlat(object):
+class ThetaToParams(object):
     '''Reconstitute the network weights and biases from a flat theta vector.'''
 
     def __init__(self, session, params):
@@ -137,7 +137,7 @@ class SetFromFlat(object):
         self.session.run(self.todo, feed_dict={self.theta: theta})
 
 
-class GetFlat(object):
+class ParamsToTheta(object):
 
     def __init__(self, session, params):
         '''Flatten trainable parameters into a long vector.'''

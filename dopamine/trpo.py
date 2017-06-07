@@ -103,8 +103,8 @@ class TRPOAgent(object):
         self.fvp = flat_gradient(gvp, network_params)
 
         # Create objects to convert flat to expanded parameters, & vice/versa.
-        self.get_flat = GetFlat(self.session, network_params)
-        self.set_from_flat = SetFromFlat(self.session, network_params)
+        self.params_to_theta = ParamsToTheta(self.session, network_params)
+        self.theta_to_params = ThetaToParams(self.session, network_params)
 
         # Estimate vvalue function using another neural network.
         self.vf = ValueFunction(env.D, self.session)
@@ -119,7 +119,7 @@ class TRPOAgent(object):
             weights = self.policy.get_weights()
             theta = np.concatenate([np.reshape(x, np.prod(x.shape)) \
                     for x in weights])
-            self.set_from_flat(theta)
+            self.theta_to_params(theta)
 
     def save_weights(self):
         '''Save weights for policy and value function.'''
@@ -214,7 +214,7 @@ class TRPOAgent(object):
             returns = np.concatenate([path['returns'] for path in paths])
 
             # 3. TRPO update of policy ----------------------------------------
-            theta_previous = 1*self.get_flat()
+            theta_previous = 1*self.params_to_theta()
 
             # Normalize the advantages.
             advantages -= advantages.mean()
@@ -247,7 +247,7 @@ class TRPOAgent(object):
 
             # Now line search to update theta.
             def surrogate_loss(theta):
-                self.set_from_flat(theta)
+                self.theta_to_params(theta)
                 return self.session.run(self.loss, feed_dict=feed)
 
             # Use a linesearch to take largest useful step.
@@ -262,10 +262,10 @@ class TRPOAgent(object):
             kl = self.session.run(self.kl_oldnew, feed_dict=feed)
 
             if kl > 2*self.cfg['epsilon']: # No big steps!
-                self.set_from_flat(theta_previous) # assigns old theta.
+                self.theta_to_params(theta_previous) # assigns old theta.
             else:
                 self.info ('> Updating theta.')
-                self.set_from_flat(theta_new)
+                self.theta_to_params(theta_new)
 
             mean_rewards = np.array(
                 [path["rewards"].mean() for path in paths])
