@@ -6,7 +6,16 @@ technique. This code has been tested on Python 3.5+.
 
 This implementation is intended to be more pedagogical than optimal. We focus
 here on understanding the algorithm via clear code. That said, when run on a
-GPU, it performs just fine on small-scale problems.
+GPU, it performs just fine on moderately large problems.
+
+## Installation
+
+Installation is easy. Just add the root directory to your local Python path in
+your `.profile`.
+
+```unix
+export PYTHONPATH="${PYTHONPATH}:/Users/username/path/to/dopamine"
+```
 
 ## Tests
 
