@@ -1,13 +1,12 @@
 import tensorflow as tf
 import numpy as np
-from ipdb import set_trace as debug
 from keras.models import Sequential
 from keras.layers import Dense
 from scipy.signal import lfilter
-from dopamine.running_stats import *
 
 
 dtype='float32'
+
 
 def discount(x, gamma):
     """

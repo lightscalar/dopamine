@@ -75,12 +75,20 @@ class DiscWorld(object):
         plt.figure(fignum);
         plt.clf()
         for path in paths:
-            plt.plot(path['state_vectors'][:,0],path['state_vectors'][:,1],\
-                    'red')
+            X Coordinate
+            plt.subplot(211)
+            plt.plot(path['state_vectors'][:,0], 'red')
             plt.ylim([-20, 20])
-            plt.xlim([-20, 20])
+            plt.plot(plt.xlim(), [5,5])
+            plt.grid(True)
+
+            # Y Coordinate
+            plt.subplot(212)
+            plt.plot(path['state_vectors'][:,0], 'red')
+            plt.plot(plt.xlim(), [5,5])
+            plt.ylim([-20, 20])
+            plt.grid(True)
         plt.show()
-        plt.grid(True)
         plt.pause(0.05)
 
     @property

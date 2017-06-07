@@ -1,12 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import pylab as plt
-from dopamine.agent import Agent
-from dopamine.lineworld import *
-from dopamine.net import SimpleNet
 from dopamine.utils import *
 from dopamine.values import *
-from ipdb import set_trace as debug
 from keras.models import Sequential
 from keras.layers import Dense
 from keras import backend

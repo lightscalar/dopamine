@@ -3,7 +3,6 @@ from tensorflow.contrib.opt import ScipyOptimizerInterface
 import numpy as np
 from dopamine.utils import *
 from dopamine.net import *
-from ipdb import set_trace as debug
 from keras.layers import Dense
 from keras import backend
 

@@ -8,7 +8,7 @@ This implementation is intended to be more pedagogical than optimal. We focus
 here on understanding the algorithm via clear code. That said, when run on a
 GPU, it performs just fine on moderately large problems.
 
-This code is associated with a forthcoming blog post detailing the algorithm 
+This code is associated with a forthcoming blog post detailing the algorithm
 and discussing how to efficiently implement it using tensorflow. Check back
 here for that link.
 
