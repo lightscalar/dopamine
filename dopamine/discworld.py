@@ -79,15 +79,19 @@ class DiscWorld(object):
             plt.subplot(211)
             plt.plot(path['state_vectors'][:,0], 'red')
             plt.ylim([-20, 20])
+            plt.xlim([0, 300])
             plt.plot(plt.xlim(), [5,5])
             plt.grid(True)
+            plt.ylabel('x position')
 
             # Y coordinate.
             plt.subplot(212)
             plt.plot(path['state_vectors'][:,0], 'red')
-            plt.plot(plt.xlim(), [5,5])
+            plt.xlim([0, 300])
             plt.ylim([-20, 20])
+            plt.plot(plt.xlim(), [5,5])
             plt.grid(True)
+            plt.ylabel('y position')
         plt.show()
         plt.pause(0.05)
 
