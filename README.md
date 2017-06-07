@@ -8,6 +8,10 @@ This implementation is intended to be more pedagogical than optimal. We focus
 here on understanding the algorithm via clear code. That said, when run on a
 GPU, it performs just fine on moderately large problems.
 
+This code is associated with a forthcoming blog post detailed the algorithm 
+and discussing how to efficiently implement it using tensorflow. Check back
+here for that link.
+
 ## Installation
 
 Installation is easy. Just add the root directory to your local Python path in
@@ -16,6 +20,12 @@ your `.profile`.
 ```unix
 export PYTHONPATH="${PYTHONPATH}:/Users/username/path/to/dopamine"
 ```
+
+## Run an Experiment
+
+To get started, run one of the simple experiments in the `/scripts` directory.
+I recommend starting with `/scripts/lineworld_experiments.py` to see get a
+quick sense of how this works.
 
 ## Tests
 
