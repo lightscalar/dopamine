@@ -3,9 +3,25 @@ import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense
 from scipy.signal import lfilter
+from ipdb import set_trace as debug
 
 
 dtype='float32'
+
+
+def current_time():
+    '''Return a nice date/time string.'''
+    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+
+def slice_tensor(tensor, idx_0, idx_1):
+    '''Take  two-dimensional slice through a tensor.'''
+    idx_0 = tf.cast(idx_0, tf.int64)
+    idx_1 = tf.cast(idx_1, tf.int64)
+    shape = tf.cast(tf.shape(tensor), tf.int64)
+    ncols = shape[1]
+    tensor_flat = tf.reshape(tensor, [-1])
+    return tf.gather(tensor_flat, idx_0 * ncols + idx_1)
 
 
 def discount(x, gamma):
@@ -185,6 +201,7 @@ def conjugate_gradient(f_Ax, b, cg_iters=10, tol=1e-10):
     minval = np.inf
     bestx = x
     for i in range(cg_iters):
+        print(i)
         z = f_Ax(p)
         v = rdotr / p.dot(z)
         x += v * p
@@ -235,3 +252,73 @@ def linesearch(f, x, fullstep, expected_improve_rate):
     return False, x
 
 
+# http://www.johndcook.com/blog/standard_deviation/
+class RunningStat(object):
+    def __init__(self, shape):
+        self._n = 0
+        self._M = np.zeros(shape)
+        self._S = np.zeros(shape)
+    def push(self, x):
+        x = np.asarray(x)
+        assert x.shape == self._M.shape
+        self._n += 1
+        if self._n == 1:
+            self._M[...] = x
+        else:
+            oldM = self._M.copy()
+            self._M[...] = oldM + (x - oldM)/self._n
+            self._S[...] = self._S + (x - oldM)*(x - self._M)
+    @property
+    def n(self):
+        return self._n
+    @property
+    def mean(self):
+        return self._M
+    @property
+    def var(self):
+        return self._S/(self._n - 1) if self._n > 1 else np.square(self._M)
+    @property
+    def std(self):
+        return np.sqrt(self.var)
+    @property
+    def shape(self):
+        return self._M.shape
+
+def test_running_stat():
+    for shp in ((), (3,), (3,4)):
+        li = []
+        rs = RunningStat(shp)
+        for _ in range(5):
+            val = np.random.randn(*shp)
+            rs.push(val)
+            li.append(val)
+            m = np.mean(li, axis=0)
+            assert np.allclose(rs.mean, m)
+            v = np.square(m) if (len(li) == 1) else np.var(li, ddof=1, axis=0)
+            assert np.allclose(rs.var, v)
+
+class ZFilter(object):
+    """
+    y = (x-mean)/std
+    using running estimates of mean,std
+    """
+
+    def __init__(self, shape, demean=True, destd=True, clip=10.0):
+        self.demean = demean
+        self.destd = destd
+        self.clip = clip
+
+        self.rs = RunningStat(shape)
+
+    def __call__(self, x, update=True):
+        if update: self.rs.push(x)
+        if self.demean:
+            x = x - self.rs.mean
+        if self.destd:
+            x = x / (self.rs.std+1e-8)
+        if self.clip:
+            x = np.clip(x, -self.clip, self.clip)
+        return x
+
+    def output_shape(self, input_space):
+        return input_space.shape

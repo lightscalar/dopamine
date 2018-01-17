@@ -1,0 +1,45 @@
+# Experiment/Optimization parameters
+experiment_name: Wild Will's Amazing Machine
+experiment_tag: wiggles
+load_models: false
+date: 17 October 2017
+environment: wiggle
+open_ai_env: false
+episodes_per_step: 1000
+iterations_per_save: 1
+normalize_state: true
+normalize_reward: true
+pdf: DiagGaussian
+
+# Define the parameters of the TRPO optimizer.
+gamma: 0.995
+lambda: 0.96
+epsilon: 0.01
+cg_damping: 0.1
+
+# Define the neural network used for the policy.
+policy:
+    - layer:
+        units: 32
+        activation: relu
+    - layer:
+        units: 32
+        activation: relu
+    - layer:
+        units: -1
+        activation: tanh
+
+# Define the neural network used for the value function.
+value_function:
+    - layer:
+        units: 128
+        activation: relu
+    - layer:
+        units: 128
+        activation: relu
+
+
+
+
+
+

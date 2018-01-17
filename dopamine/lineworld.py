@@ -22,8 +22,10 @@ class LineWorld(object):
         self.max_time = 30
         self.target_x = 5
         self.total_steps = 0
+        self.info = {}
 
     def step(self, action):
+        '''Advance the simulation by a single timestep.'''
 
         # We have a one-dimensional continuous action space now.
         # The action here is simply the acceleration at this instant.
@@ -39,7 +41,7 @@ class LineWorld(object):
         self.reward = -self._distance_to_target
         self.total_steps += 1
 
-        return self.state, self.reward, self.done
+        return self.state, self.reward, self.done, self.info
 
     def render(self, paths, fignum=100):
         '''Illustrate trajectories.'''
@@ -89,6 +91,10 @@ class LineWorld(object):
         self.inpt = 0
         self.x, self.vx, self.t = 10*np.random.rand(), 2*np.random.randn(), 0
         return self.state
+
+    def reset_target(self):
+        '''Reset the target.'''
+        pass
 
     def simulate(self, agent):
         '''Simulate the environment using the provided agent to control all the

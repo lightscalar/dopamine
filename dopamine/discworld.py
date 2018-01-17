@@ -21,27 +21,44 @@ class DiscWorld(object):
         self.ay = 0.0
         self.t = 0
         self.dt = 0.1
+        self.tmx = 1
+        self.tmy = 1
         self.max_time = 30
         self.target_x = 5
         self.target_y = 5
         self.total_steps = 0
+        self.delta_distance = 0
+        self.ostate = self.state
+        self.info = {}
 
     def step(self, action):
+        '''Advance the simulation by one timestep.'''
+
+        # Copy the old state.
+        self.ostate = list(np.copy(self.state))
 
         # We have a two-dimensional continuous action space now.
         self.ax = action[0][0]
         self.ay = action[0][1]
 
         # Update position.
+        self.old_distance = 1.0 * self._distance_to_target
         self.t += self.dt
         self.x += self.vx * self.dt
         self.y += self.vy * self.dt
         self.vx += self.ax * self.dt
         self.vy += self.ay * self.dt
-        self.reward = -self._distance_to_target
+        self.delta_distance = self._distance_to_target - self.old_distance
+        # self.reward = -self._distance_to_target
+        self.reward = self._reward
         self.total_steps += 1
 
-        return self.state, self.reward, self.done
+        return self.state, self.reward, self.done, self.info
+
+    @property
+    def concat_state(self):
+        '''Concats previous state with the current state.'''
+        return self.ostate + self.state
 
     @property
     def _distance_to_target(self):
@@ -60,10 +77,20 @@ class DiscWorld(object):
         return (self.t>self.max_time)
 
     @property
+    def _reward(self):
+        '''Fancy reward function.'''
+        return -self._distance_to_target**2
+        if self._distance_to_target > 1:
+            return -1.0
+        else:
+            return 0.0
+
+    @property
     def state(self):
         '''The currently observed state of the system.'''
-        return np.atleast_2d([self.x, self.y, self.vx, self.vy, self.ax, \
-                self.ay])
+        # return np.atleast_2d([self.x, self.y, self.target_x, self.target_y])
+        return np.atleast_2d([self.x, self.y, self.vx, self.vy, \
+                self.target_x, self.target_y])
 
     @property
     def D(self):
@@ -79,17 +106,17 @@ class DiscWorld(object):
             plt.subplot(211)
             plt.plot(path['state_vectors'][:,0], 'red')
             plt.ylim([-20, 20])
-            plt.xlim([0, 300])
-            plt.plot(plt.xlim(), [5,5])
+            plt.xlim([0, self.max_time/self.dt])
+            plt.plot(plt.xlim(), [self.target_x, self.target_x])
             plt.grid(True)
             plt.ylabel('x position')
 
             # Y coordinate.
             plt.subplot(212)
-            plt.plot(path['state_vectors'][:,0], 'red')
-            plt.xlim([0, 300])
+            plt.plot(path['state_vectors'][:,1], 'red')
+            plt.xlim([0, self.max_time/self.dt])
             plt.ylim([-20, 20])
-            plt.plot(plt.xlim(), [5,5])
+            plt.plot(plt.xlim(), [ self.target_y, self.target_y])
             plt.grid(True)
             plt.ylabel('y position')
         plt.show()
@@ -102,9 +129,14 @@ class DiscWorld(object):
     def reset(self):
         '''Reset state vector, time, velocity, etc.'''
         self.inpt = 0
-        self.x, self.vx, self.t = 10*np.random.rand(), 2*np.random.randn(), 0
-        self.y, self.vy, self.t = 10*np.random.rand(), 2*np.random.randn(), 0
+        self.x, self.vx, self.t = 20*(np.random.rand()-0.5), 2*np.random.randn(), 0
+        self.y, self.vy, self.t = 20*(np.random.rand()-0.5), 2*np.random.randn(), 0
         return self.state
+
+    def reset_target(self):
+        '''Reset the target location.'''
+        self.target_x = (40 * (np.random.rand() - 0.5))
+        self.target_y = (40 * (np.random.rand() - 0.5))
 
     def simulate(self, agent):
         '''Simulate the environment using the provided agent to control all the
@@ -125,7 +157,7 @@ class DiscWorld(object):
 if __name__ == '__main__':
 
     # Make an environment.
-    env = LineWorld()
+    env = DiscWorld()
     pdf = DiagGaussian(2)
 
     x = []
@@ -143,7 +175,7 @@ if __name__ == '__main__':
             # Step the simulation.
             state, reward, done = env.step(action)
             x.append([state[0][0], state[0][1]])
-            reward.append(reward)
+            rewards.append(reward)
 
     # Plot this guy.
     x = np.vstack(x)

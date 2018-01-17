@@ -1,10 +1,22 @@
 '''Implements a variety of stochastic policies for policy gradients.'''
 import numpy as np
 import tensorflow as tf
+from dopamine.utils import slice_tensor
+from ipdb import set_trace as debug
 
 
 # Specify the data type we're using.
 dtype = tf.float32
+
+
+def categorical_sample(prob_nk):
+    '''Sample from categorical distribution. Each row specifies the class
+       probabilities.'''
+    prob_nk = np.asarray(prob_nk)
+    assert prob_nk.ndim == 2
+    N = prob_nk.shape[0]
+    csprob_nk = np.cumsum(prob_nk, axis=1)
+    return np.argmax(csprob_nk > np.random.rand(N,1), axis=1)
 
 
 class PDF(object):
@@ -59,7 +71,7 @@ class DiagGaussian(PDF):
                 same size as the mean parameter vector.
         '''
         self.D = int(D)
-        self.stddev = sttdev if stddev else np.ones(D)
+        self.stddev = stddev if stddev else np.ones(D)
 
     @property
     def parameter_vector(self):
@@ -87,9 +99,7 @@ class DiagGaussian(PDF):
         '''Compute Kullback-Leibler divergence between two densities.'''
         mu_a = param_vector_a
         mu_b = param_vector_b
-        # std_a = self.stddev
         std_a = self.stddev * tf.ones_like(mu_a)
-        # std_b = self.stddev
         std_b = self.stddev * tf.ones_like(mu_b)
         std_a2 = tf.square(std_a)
         mean_diff2 = tf.square(mu_a - mu_b)
@@ -104,9 +114,84 @@ class DiagGaussian(PDF):
         mu = param_vector
         std = self.stddev * tf.ones_like(param_vector)
         M = tf.shape(param_vector)[0]
-        return mu + std * tf.random_normal((M,self.D))
+        return tf.clip_by_value(mu + std * tf.random_normal((M,self.D)), -1, 1)
 
     def maxprob(self, param_vector):
         '''Return values with maximum probability (here, just the mean
            vector).'''
         return param_vector
+
+
+class Categorical(PDF):
+    '''A categorical distribution.'''
+
+    def __init__(self, D):
+        '''Specify number of classes/categories in distribution..'''
+        self.D = D
+
+    @property
+    def sampled_variable(self):
+        '''Returns placeholder for sampled variable.'''
+        return tf.placeholder(dtype, [None, 1])
+
+    @property
+    def parameter_vector(self):
+        '''Returns parameter vector placeholder.'''
+        return tf.placeholder(dtype, [None, self.D])
+
+    def likelihood(self, a, prob):
+        '''Likelihood of observation a, given distribution prob.'''
+        # Best way to index into these arrays?
+        N = tf.shape(prob)[0]
+        idx_0 = tf.range(N)
+        idx_1 = tf.squeeze(a)
+        return slice_tensor(prob, idx_0, idx_1)
+
+    def loglikelihood(self, a, prob):
+        '''Log-likehood of observation, given distribution.'''
+        return tf.log(self.likelihood(a, prob))
+
+    def kl(self, prob0, prob1):
+        '''Kullback-Liebler divergence between two distributions.'''
+        return tf.reduce_sum(prob0 * tf.log(prob0/(prob1 + 1e-6)), axis=1)
+        # return (prob0 * T.log(prob0/prob1)).sum(axis=1)
+
+    def entropy(self, prob0):
+        '''Returns entropy of distribution.'''
+        return -tf.reduce_sum(prob0 * tf.log(prob0), axis=1)
+        # return - (prob0 * T.log(prob0)).sum(axis=1)
+
+    def sample(self, prob):
+        '''Sample from the categorical distribution.'''
+        N = tf.shape(prob)[0]
+        dist = tf.contrib.distributions.Categorical(prob)
+        return tf.reshape(dist.sample(), shape=(N,1))
+
+    def maxprob(self, prob):
+        'Maximum probability across distribution.'''
+        return tf.argmax(prob, axis=1)
+
+
+if __name__ == '__main__':
+
+    pdf = Categorical(4)
+    params = pdf.parameter_vector()
+    sample = pdf.sample(params)
+    dist = np.atleast_2d([0.2, 0.4, 0.1, 0.3])
+    # dist = np.atleast_2d([0.25, 0.25, 0.25, 0.25])
+    dist_2 = np.atleast_2d([0.2, 0.35, 0.1, 0.3])
+    p1 = pdf.parameter_vector()
+    p2 = pdf.parameter_vector()
+    kl = pdf.kl(p1, p2)
+    entropy = pdf.entropy(p1)
+
+    with tf.Session() as sess:
+        init = tf.global_variables_initializer()
+        sess.run(init)
+        pdf = Categorical(4)
+        out = sess.run(sample, feed_dict={params: dist})
+        kl_div = sess.run(kl, feed_dict={p1: dist, p2: dist_2})
+        ent = sess.run(entropy, feed_dict={p1:dist})
+        pmax = sess.run(pdf.maxprob(p1), feed_dict={p1:dist})
+
+
